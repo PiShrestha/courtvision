@@ -1,0 +1,18 @@
+# core perception stack
+ultralytics>=8.4           # yolov8 + bytetrack/botsort trackers
+lap>=0.5.12                # linear assignment, required by ultralytics bytetrack
+opencv-python>=4.8         # video i/o, frame ops, homography
+numpy>=1.24
+
+# deep-learning backend (cuda wheel auto-picked when a gpu is present)
+torch>=2.0
+torchvision>=0.15
+
+# narrative / scouting summary
+google-generativeai>=0.7   # gemini api client
+python-dotenv>=1.0         # load api keys from .env
+
+# config + data i/o
+PyYAML>=6.0                # config.yaml
+pandas>=2.0                # optional: EventLog.to_dataframe()
+tqdm>=4.65                 # progress bars
