@@ -1,0 +1,35 @@
+# courtvision default config. every knob lives here.
+# cli flags override these; env vars via the slurm script override cli flags.
+
+video:
+  # slice of the input clip to process. null end = run to the end of the file.
+  start_seconds: 0
+  end_seconds: null
+  # keep every nth frame. 1 = all frames; 5 = 6x faster at 1/5 temporal density.
+  stride: 1
+
+perception:
+  # yolov8 checkpoint. bare names (yolov8n.pt) auto-download on first use.
+  model: yolov8m.pt
+  # detector threshold. lower catches small/blurry objects, raises false positives.
+  confidence: 0.35
+  # inference resolution. 640 default, 1280 improves small-object (ball) recall.
+  imgsz: 640
+  # ultralytics tracker config: bytetrack.yaml or botsort.yaml.
+  tracker: bytetrack.yaml
+
+symbolic:
+  # possession threshold in court units (feet), used when homography is configured.
+  court_possession_dist: 6.0
+  # possession threshold in pixels at a 360p reference. auto-scaled to actual frame height.
+  pixel_possession_dist: 110.0
+
+narrative:
+  # leave blank or null to use the local deterministic fallback.
+  gemini_model: gemini-1.5-flash
+
+# optional homography correspondences (json). null disables court-space projection.
+homography_config: null
+
+# where to write the final stats report.
+out_txt: outputs/stats_report.txt
