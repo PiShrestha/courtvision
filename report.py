@@ -21,3 +21,31 @@ def video_metadata(video_path: str) -> dict[str, Any]:
     return {"fps": fps, "frame_count": frame_count, "duration_s": duration}
 
 
+def summarize_stats(tracks_by_frame: list[dict], events: list[dict]) -> dict[str, Any]:
+    """roll tracks + events into counts for the final report."""
+    class_counts: Counter[str] = Counter()
+    for frame in tracks_by_frame:
+        for track in frame.get("tracks", []):
+            class_counts[str(track.get("class_name"))] += 1
+
+    event_counts = Counter(str(e.get("event")) for e in events)
+
+    per_player: dict[int, Counter[str]] = {}
+    for event in events:
+        player = event.get("player")
+        if not isinstance(player, int):
+            continue
+        per_player.setdefault(player, Counter())[str(event.get("event"))] += 1
+
+    return {
+        "frames_processed": len(tracks_by_frame),
+        "detection_counts": dict(class_counts),
+        "event_counts": dict(event_counts),
+        "per_player_events": {k: dict(v) for k, v in per_player.items()},
+    }
+
+
+def write_text_report(
+    out_path: str,
+    video_path: str,
+    metadata: dict[str, Any],
