@@ -16,3 +16,25 @@ class Homography:
         h = Homography()
         h.set_correspondences(pixel_pts, court_pts)   # at least 4 pairs
         h.compute_homography()
+        court_xy = h.pixel_to_court(px, py)
+    """
+
+    def __init__(self):
+        self.pixel_points: np.ndarray | None = None
+        self.court_points: np.ndarray | None = None
+        self.H: np.ndarray | None = None
+
+    def set_correspondences(self, pixel_pts, court_pts) -> None:
+        """store pixel<->court pairs. needs >=4 correspondences."""
+        pixel_arr = np.asarray(pixel_pts, dtype=np.float32)
+        court_arr = np.asarray(court_pts, dtype=np.float32)
+
+        if pixel_arr.shape != court_arr.shape:
+            raise ValueError(
+                f"pixel and court shapes must match, got {pixel_arr.shape} vs {court_arr.shape}"
+            )
+        if pixel_arr.ndim != 2 or pixel_arr.shape[1] != 2:
+            raise ValueError(f"correspondences must be shape (N, 2), got {pixel_arr.shape}")
+        if pixel_arr.shape[0] < 4:
+            raise ValueError(f"need at least 4 correspondences, got {pixel_arr.shape[0]}")
+
