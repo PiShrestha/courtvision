@@ -38,3 +38,51 @@ Outputs land in `outputs/stats_report.txt` (path configurable).
 ## Configuration
 
 All knobs live in [`config.yaml`](config.yaml). CLI flags override file values; environment variables (via the slurm script) override CLI flags.
+
+```yaml
+video:
+  start_seconds: 0
+  end_seconds: null     # null = end of file
+  stride: 1             # keep every nth frame
+
+perception:
+  model: yolov8m.pt     # n | s | m | l | x
+  confidence: 0.35
+  imgsz: 640
+  tracker: bytetrack.yaml   # or botsort.yaml
+
+symbolic:
+  court_possession_dist: 6.0   # feet, used with homography
+  pixel_possession_dist: 110   # pixels at 360p, auto-scaled
+
+narrative:
+  gemini_model: gemini-1.5-flash
+
+homography_config: null   # path to json, or null
+out_txt: outputs/stats_report.txt
+```
+
+Override from the command line:
+
+```bash
+python main.py --video clip.mov --model yolov8x.pt --imgsz 1280 --confidence 0.25
+```
+
+---
+
+## Project layout
+
+```
+courtvision/
+├── main.py                       # entry point, wires the three stages
+├── config.py                     # loads config.yaml and applies cli overrides
+├── config.yaml                   # all tunable knobs in one place
+├── report.py                     # builds the text stats report
+│
+├── perception/                   # stage 1: video -> tracks
+│   ├── pipeline.py               # frame loop, homography projection
+│   └── tracker.py                # yolov8 + ultralytics bytetrack/botsort
+│
+├── logic/                        # stage 2: tracks -> events
+│   ├── homography.py             # pixel <-> court coordinate mapping
+│   ├── rules.py                  # possession + shot_attempt rules
