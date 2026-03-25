@@ -29,3 +29,40 @@ Ground truth on a 1v1 frame is 2 players. Even the best detector we tested (yolo
 
 The same sweep showed:
 
+| Config | Player det / 90 s | Ball det / 90 s | Distinct track IDs |
+|---|---:|---:|---:|
+| yolov8m / conf=0.35 / 640 / bytetrack | 12,950 | 892 | 38 |
+| yolov8m / conf=0.45 / 640 / bytetrack | 12,640 | 842 | 36 |
+| yolov8m / conf=0.25 / 1280 / bytetrack | 12,801 | 1,066 | 44 |
+| yolov8l / conf=0.35 / 640 / bytetrack | 12,502 | 1,023 | 48 |
+| yolov8x / conf=0.35 / 1280 / bytetrack | **10,598** | **1,242** | 42 |
+| yolov8m / conf=0.35 / 640 / botsort | 12,952 | 964 | 40 |
+
+**Reading:** ground truth is ~5,400 player detections (2 × 2,697 frames). Actual: **2.0–2.4× too many**. 38–48 distinct track IDs in a single 90 s 1v1 window (ground truth: 2).
+
+### 3. Shot-attempt heuristic is uncalibrated
+
+The rule fires when the ball moves ≥12 pixels upward between consecutive frames while a player has possession. On 90 s of gameplay we see 21–29 `shot_attempt` events, when a human scout counts 2–5. Calibrating this properly requires either (a) a two-stage detector (vertical-dominance + release-and-fall trajectory check over N frames) or (b) a per-frame hoop class to anchor "toward the basket".
+
+### 4. Static homography is unusable on moving-camera footage
+
+The `Homography` class works and passes unit tests. It requires ≥4 fixed pixel↔court correspondences. The instant the camera pans, zooms, or the operator reframes, every correspondence is wrong and the projection is meaningless. Our dataset (TNC) is ~59 % moving-camera. The homography code path is ready for per-frame court-keypoint detection, which is the next real piece of work.
+
+### 5. Ball recall drops over time in the same clip
+
+Running the same config on six disjoint 90 s windows of `1v1-mk.mov`:
+
+| Window | Ball detections |
+|---|---:|
+| 0–90 s | 1,242 |
+| 180–270 s | 1,441 |
+| 360–450 s | 1,273 |
+| 540–630 s | 817 |
+| 720–810 s | 682 |
+| 870–960 s | 467 |
+
+Same model, same input, same tracker — **3× drop from start to end**. The camera behavior changes (zoom, shakier handholding late game), and the detector degrades with it. This is a dataset / capture-protocol issue, not a pipeline bug, but it means any aggregate metric over a full video hides major variation across its segments.
+
+---
+
+## Design tradeoffs (what we chose and what we gave up)
