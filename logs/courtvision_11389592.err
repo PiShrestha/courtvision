@@ -1,0 +1,10 @@
+/sfs/gpfs/tardis/home/jpj8rf/Documents/github/courtvision/narrative/generator.py:15: FutureWarning: 
+
+All support for the `google.generativeai` package has ended. It will no longer be receiving 
+updates or bug fixes. Please switch to the `google.genai` package as soon as possible.
+See README for more details:
+
+https://github.com/google-gemini/deprecated-generative-ai-python/blob/main/README.md
+
+  import google.generativeai as genai
+[2026-04-09T00:48:43.377] error: *** JOB 11389592 ON udc-an25-20 CANCELLED AT 2026-04-09T00:48:43 DUE to SIGNAL Terminated ***

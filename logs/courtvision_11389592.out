@@ -1,0 +1,14 @@
+====================================================================
+CourtVision run
+  job tag      : 11389592
+  host         : udc-an25-20
+  date         : 2026-04-09T00:48:10-04:00
+  python       : Python 3.11.11
+  video        : 1v1-mk.mov
+  start..end   : 0s..90
+  stride       : 1
+  homography   : <none>
+  output       : outputs/1v1-mk_11389592.txt
+  cuda visible : 0
+  command      : python main.py --video 1v1-mk.mov --out-txt outputs/1v1-mk_11389592.txt --start 0 --stride 1 --end 90
+====================================================================
