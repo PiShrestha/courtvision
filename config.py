@@ -23,3 +23,14 @@ def apply_cli_overrides(cfg: dict[str, Any], args: Namespace) -> dict[str, Any]:
     """overlay any non-none cli argument on top of the config dict."""
     mapping = {
         # cli flag -> (section, key)
+        "start": ("video", "start_seconds"),
+        "end": ("video", "end_seconds"),
+        "stride": ("video", "stride"),
+        "model": ("perception", "model"),
+        "confidence": ("perception", "confidence"),
+        "imgsz": ("perception", "imgsz"),
+        "tracker": ("perception", "tracker"),
+        "homography_config": (None, "homography_config"),
+        "out_txt": (None, "out_txt"),
+    }
+    for attr, (section, key) in mapping.items():
