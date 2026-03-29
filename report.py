@@ -49,3 +49,26 @@ def write_text_report(
     out_path: str,
     video_path: str,
     metadata: dict[str, Any],
+    stats: dict[str, Any],
+    summary: str,
+) -> None:
+    """write a human-readable report mixing stats and the narrative summary."""
+    lines: list[str] = []
+    lines += [
+        "CourtVision Stats Report",
+        "=" * 60,
+        "",
+        f"Video: {video_path}",
+        f"FPS: {metadata.get('fps', 0.0):.2f}",
+        f"Frames in file: {metadata.get('frame_count', 0)}",
+        f"Duration (s): {metadata.get('duration_s', 0.0):.2f}",
+        f"Frames processed: {stats.get('frames_processed', 0)}",
+        "",
+    ]
+
+    lines += ["Detections", "-" * 60]
+    for class_name, count in sorted(stats.get("detection_counts", {}).items()):
+        lines.append(f"{class_name}: {count}")
+    lines.append("")
+
+    lines += ["Events", "-" * 60]
