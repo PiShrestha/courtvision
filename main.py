@@ -62,3 +62,32 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--video", required=True, help="input video file.")
     parser.add_argument("--config", default=None, help="yaml config file (default: ./config.yaml).")
+    parser.add_argument("--out-txt", dest="out_txt", default=None, help="output report path.")
+
+    # overrides; any unset flag falls back to config.yaml.
+    parser.add_argument("--start", type=float, default=None, help="start time in seconds.")
+    parser.add_argument("--end", type=float, default=None, help="end time in seconds.")
+    parser.add_argument("--stride", type=int, default=None, help="process every nth frame.")
+    parser.add_argument("--model", default=None, help="yolo weights or shorthand.")
+    parser.add_argument("--confidence", type=float, default=None, help="detector threshold.")
+    parser.add_argument("--imgsz", type=int, default=None, help="yolo inference resolution.")
+    parser.add_argument("--tracker", default=None, help="bytetrack.yaml or botsort.yaml.")
+    parser.add_argument("--homography-config", dest="homography_config", default=None,
+                         help="json file with pixel<->court correspondences.")
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    cfg = app_config.apply_cli_overrides(app_config.load(args.config), args)
+
+    print("=" * 50)
+    print("  CourtVision - neuro-symbolic basketball analytics")
+    print("=" * 50, "\n")
+
+    v, p = cfg["video"], cfg["perception"]
+    print("* stage 1: perception")
+    end_label = "EOF" if v.get("end_seconds") is None else f"{v['end_seconds']}s"
+    print(f"  window: start={v['start_seconds']}s end={end_label} stride={v['stride']}")
+    print(f"  model={p['model']} conf={p['confidence']} imgsz={p['imgsz']} tracker={p['tracker']}")
+    tracks = run_perception(args.video, cfg)
