@@ -44,3 +44,24 @@ class PerceptionPipeline:
 
         frame_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
         frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+        fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
+
+        start_frame = int(round(self.start_seconds * fps))
+        end_frame = int(round(self.end_seconds * fps)) if self.end_seconds is not None else None
+
+        # seek snaps to the nearest keyframe, so the first yielded frame can
+        # land a few frames before start_frame on heavily compressed video.
+        if start_frame > 0:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
+        frame_id = start_frame
+        try:
+            while cap.isOpened():
+                ok, frame = cap.read()
+                if not ok:
+                    break
+                if end_frame is not None and frame_id >= end_frame:
+                    break
+
+                if (frame_id - start_frame) % self.stride == 0:
+                    tracks = self.tracker.update(frame, frame_id=frame_id)
