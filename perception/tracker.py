@@ -48,3 +48,25 @@ class Tracker:
             imgsz=self.imgsz,
             conf=self.confidence_threshold,
             verbose=False,
+        )
+        if not results:
+            return []
+
+        boxes = results[0].boxes
+        if boxes is None or boxes.id is None:
+            return []
+
+        tracks: list[dict[str, Any]] = []
+        for track_id, conf, cls_id, xyxy in zip(
+            boxes.id.int().tolist(),
+            boxes.conf.tolist(),
+            boxes.cls.int().tolist(),
+            boxes.xyxy.tolist(),
+        ):
+            class_name = CLASS_MAP.get(int(cls_id))
+            if class_name is None:
+                continue
+            if conf < self.confidence_threshold:
+                continue
+            tracks.append(
+                {
