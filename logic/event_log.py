@@ -12,3 +12,9 @@ class EventLog:
 
     def add_events(self, events: list[dict[str, Any]]) -> None:
         self._events.extend(events)
+
+    def to_list(self) -> list[dict[str, Any]]:
+        return list(self._events)
+
+    def to_dataframe(self):
+        """return events as a pandas dataframe, or none if pandas is missing."""
