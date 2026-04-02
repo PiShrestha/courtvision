@@ -38,3 +38,21 @@ class Homography:
         if pixel_arr.shape[0] < 4:
             raise ValueError(f"need at least 4 correspondences, got {pixel_arr.shape[0]}")
 
+        self.pixel_points = pixel_arr
+        self.court_points = court_arr
+
+    def compute_homography(self) -> None:
+        """solve for the 3x3 matrix using ransac."""
+        if self.pixel_points is None or self.court_points is None:
+            raise RuntimeError("call set_correspondences() first")
+        H, _ = cv2.findHomography(self.pixel_points, self.court_points, cv2.RANSAC, 5.0)
+        if H is None:
+            raise RuntimeError("cv2.findHomography failed")
+        self.H = H
+
+    def pixel_to_court(self, px: float, py: float) -> tuple[float, float]:
+        """project a single pixel to court coordinates."""
+        if self.H is None:
+            raise RuntimeError("call compute_homography() first")
+        pt = np.array([[[float(px), float(py)]]], dtype=np.float32)
+        out = cv2.perspectiveTransform(pt, self.H)
