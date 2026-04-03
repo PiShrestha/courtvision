@@ -48,3 +48,25 @@ class NarrativeGenerator:
 
     def _local_summary(self, events: list[dict[str, Any]]) -> str:
         """deterministic fallback when no api key is configured."""
+        if not events:
+            return "No events were detected. Check camera angle, model weights, and ball visibility."
+
+        per_player = _group_by_player(events)
+        lines = ["CourtVision Summary", "", f"Total events: {len(events)}"]
+        for player in sorted(per_player):
+            c = per_player[player]
+            attempts = c.get("shot_attempt", 0)
+            made = c.get("shot_made", 0)
+            pct = (100.0 * made / attempts) if attempts else 0.0
+            lines.append(
+                f"Player {player}: possessions={c.get('possession', 0)}, "
+                f"shot_attempts={attempts}, shot_made={made}, fg%={pct:.1f}"
+            )
+
+        leader = _leader_by_fg(per_player)
+        if leader is not None:
+            lines += ["", f"Scouting note: Player {leader} was most efficient in this clip."]
+        return "\n".join(lines)
+
+
+def _group_by_player(events: list[dict[str, Any]]) -> dict[int, Counter[str]]:
