@@ -58,3 +58,31 @@ class RuleEngine:
 
         players = [t for t in tracks if t.get("class_name") == "player"]
         balls = [t for t in tracks if t.get("class_name") == "ball"]
+        if not balls:
+            return events
+
+        ball = balls[0]
+        ball_pos, ball_in_court = _track_position(ball)
+        ball_pixel_center = _bbox_center(ball["bbox"])
+
+        # possession: nearest player within threshold. uses court space when
+        # homography is configured, otherwise falls back to pixel space.
+        if players:
+            def player_distance(p: dict[str, Any]) -> float:
+                p_pos, p_in_court = _track_position(p)
+                if p_in_court and ball_in_court:
+                    return _distance(p_pos, ball_pos)
+                return _distance(_bbox_center(p["bbox"]), ball_pixel_center)
+
+            nearest = min(players, key=player_distance)
+            _, nearest_in_court = _track_position(nearest)
+            threshold = (
+                self.court_possession_dist
+                if (nearest_in_court and ball_in_court)
+                else pixel_possession_dist
+            )
+            if player_distance(nearest) <= threshold:
+                new_possession = int(nearest["track_id"])
+                if new_possession != self.possession:
+                    self.possession = new_possession
+                    events.append({
