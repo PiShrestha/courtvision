@@ -86,3 +86,43 @@ courtvision/
 ├── logic/                        # stage 2: tracks -> events
 │   ├── homography.py             # pixel <-> court coordinate mapping
 │   ├── rules.py                  # possession + shot_attempt rules
+│   └── event_log.py              # ordered, serialisable event list
+│
+├── narrative/                    # stage 3: events -> scouting summary
+│   └── generator.py              # gemini api or deterministic fallback
+│
+├── scripts/
+│   ├── run_courtvision.sh        # slurm + bash runner, env-var driven
+│   ├── sweep_90s.sh              # submit the 6-config detector sweep
+│   └── compare_sweep.sh          # side-by-side summary across sweep outputs
+│
+├── presentation/                 # slide deck + matplotlib charts
+├── requirements.txt
+├── README.md
+├── ARCHITECTURE.md               # stage-by-stage design
+└── CONSTRAINTS.md                # what works, what doesn't, tradeoffs
+```
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the data-flow diagram and stage contracts, and [CONSTRAINTS.md](CONSTRAINTS.md) for an honest discussion of what the system can and cannot do.
+
+---
+
+## Running on UVA HPC (Slurm)
+
+The repo includes a single parameterised Slurm script. It works both as `sbatch` and as plain `bash`.
+
+```bash
+# submit a 90-second slice to the gpu queue
+VIDEO=1v1-mk.mov START=0 END=90 sbatch scripts/run_courtvision.sh
+
+# run a 6-config parameter sweep overnight
+bash scripts/sweep_90s.sh
+
+# tomorrow morning: see a side-by-side table of every sweep result
+bash scripts/compare_sweep.sh
+```
+
+The default Slurm account is `cs6770_sp26`; edit `scripts/run_courtvision.sh` if yours differs.
+
+Each config produces a report named `outputs/<video>_<model>_conf<NN>_imgsz<###>_<tracker>_<jobid>.txt` so sweep artifacts never collide.
+
