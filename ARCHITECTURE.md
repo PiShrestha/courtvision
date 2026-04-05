@@ -85,3 +85,43 @@ The arrows are not abstractions — they are plain Python lists of dicts. Any st
 
 ---
 
+## Stage 3 — Narrative (`narrative/`)
+
+| File | Responsibility |
+|---|---|
+| `generator.py` | either calls Gemini (`google-generativeai`) with a text prompt built from the event log, or falls back to a deterministic Python summariser. |
+
+**Input:** the event log.
+
+**Output:** a multi-line scouting summary (free-form text).
+
+**Why the VLM never sees raw frames in this design.** The SportR and xVARs benchmarks both show that end-to-end video-to-text models hallucinate temporal ordering — they describe actions out of sequence because they have no verified spatial reference. By restricting the narrative stage to the pre-validated event stream, we remove that entire failure mode. Llama 3.2-Vision is the planned upgrade; it is a drop-in for `NarrativeGenerator.generate`.
+
+---
+
+## Stage contracts (what gets passed between modules)
+
+| From → To | Data shape | Transport |
+|---|---|---|
+| Perception → Logic | `list[dict]` (`frame_id`, `frame_height`, `frame_width`, `tracks`) | in-memory Python list |
+| Logic → Narrative | `list[dict]` (`frame_id`, `event`, `player`) | in-memory Python list |
+| Narrative → Report | `str` | in-memory string |
+
+Everything is plain Python — no custom serialisers, no ORM, no message bus. This is deliberate: the pipeline is meant to be trivially debuggable with `print()` and `json.dumps()`.
+
+---
+
+## Configuration and entry points
+
+- **`config.yaml`** — single source of truth for every tunable knob. Loaded by `config.py`.
+- **`main.py`** — CLI entry point. Flags override YAML values; missing flags fall back to the YAML defaults.
+- **`scripts/run_courtvision.sh`** — single Slurm / bash runner. Environment variables override CLI flags in turn. The runner encodes the perception config into the output filename so a parameter sweep produces distinguishable artifacts.
+- **`scripts/sweep_90s.sh` + `scripts/compare_sweep.sh`** — submit a 6-config sweep, then later summarise the results in one table.
+
+The layering — **YAML → CLI → env** — means any particular field can be set at whichever level is most convenient without editing code.
+
+---
+
+## Data flow diagram (expanded)
+
+```
