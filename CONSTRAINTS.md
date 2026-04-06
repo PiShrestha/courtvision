@@ -66,3 +66,33 @@ Same model, same input, same tracker — **3× drop from start to end**. The cam
 ---
 
 ## Design tradeoffs (what we chose and what we gave up)
+
+### Modular neuro-symbolic vs. end-to-end VLM
+
+**Chosen:** explicit three-stage split with plain-Python data contracts.
+**Given up:** no learned representation of "a basketball possession" beyond hard-coded rules; all error modes that humans can identify, rule tweaks can address; none that are subtle enough to need learning.
+**Won:** every failure is traceable to a specific stage and often a specific rule. The narrative stage cannot hallucinate an event order because it does not see raw frames.
+
+### COCO-pretrained YOLO vs. custom basketball training
+
+**Chosen:** generic Ultralytics COCO checkpoint; swap via `--model` flag.
+**Given up:** hoop class, improved recall on small/blurry basketballs, and domain-specific prior on body pose during a shot.
+**Won:** zero training time; immediate out-of-the-box detection; fair baseline before claiming "custom model improves X by Y".
+
+### Single static homography vs. per-frame court keypoints
+
+**Chosen:** single JSON of correspondences, loaded once.
+**Given up:** ability to use homography on any moving-camera clip (most of the dataset).
+**Won:** trivially simple calibration workflow for a tripod setup; no need for a keypoint-detection model; the module is complete enough to plug into when per-frame calibration lands.
+
+### Ultralytics ByteTrack vs. hand-rolled tracker
+
+**Chosen:** Ultralytics' real ByteTrack via `model.track(persist=True)`.
+**Given up:** ability to cleanly separate `Detector` and `Tracker` classes (Ultralytics ties them together).
+**Won:** Kalman prediction, short-occlusion recovery, and a real implementation instead of our previous 40-line greedy IoU matcher.
+
+### Gemini API vs. local multimodal model
+
+**Chosen:** `google-generativeai` with a local deterministic fallback.
+**Given up:** offline inference; no dependency on external API.
+**Won:** near-zero setup for narrative generation; we can swap in Llama 3.2-Vision at the `NarrativeGenerator.generate` boundary without touching the rest of the system.
