@@ -72,3 +72,21 @@ def write_text_report(
     lines.append("")
 
     lines += ["Events", "-" * 60]
+    for event_name, count in sorted(stats.get("event_counts", {}).items()):
+        lines.append(f"{event_name}: {count}")
+    lines.append("")
+
+    lines += ["Per-Player Event Counts", "-" * 60]
+    per_player = stats.get("per_player_events", {})
+    if not per_player:
+        lines.append("No player-attributed events detected.")
+    else:
+        for player in sorted(per_player):
+            lines.append(f"Player {player}: {per_player[player]}")
+    lines.append("")
+
+    lines += ["Summary", "-" * 60, summary.strip(), ""]
+
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("\n".join(lines), encoding="utf-8")
