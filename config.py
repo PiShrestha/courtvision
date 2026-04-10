@@ -34,3 +34,11 @@ def apply_cli_overrides(cfg: dict[str, Any], args: Namespace) -> dict[str, Any]:
         "out_txt": (None, "out_txt"),
     }
     for attr, (section, key) in mapping.items():
+        value = getattr(args, attr, None)
+        if value is None:
+            continue
+        if section is None:
+            cfg[key] = value
+        else:
+            cfg.setdefault(section, {})[key] = value
+    return cfg
