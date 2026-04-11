@@ -91,3 +91,26 @@ def main() -> None:
     print(f"  window: start={v['start_seconds']}s end={end_label} stride={v['stride']}")
     print(f"  model={p['model']} conf={p['confidence']} imgsz={p['imgsz']} tracker={p['tracker']}")
     tracks = run_perception(args.video, cfg)
+    print(f"  got {len(tracks)} frames of tracking data.\n")
+
+    print("* stage 2: symbolic reasoning")
+    events = run_logic(tracks, cfg)
+    print(f"  detected {len(events)} game events.\n")
+
+    print("* stage 3: narrative report")
+    summary = run_narrative(events, cfg)
+    print(summary)
+
+    out_path = cfg.get("out_txt") or "outputs/stats_report.txt"
+    write_text_report(
+        out_path=out_path,
+        video_path=args.video,
+        metadata=video_metadata(args.video),
+        stats=summarize_stats(tracks, events),
+        summary=summary,
+    )
+    print(f"\nSaved report: {out_path}")
+
+
+if __name__ == "__main__":
+    main()
