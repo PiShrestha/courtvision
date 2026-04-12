@@ -70,3 +70,21 @@ class Tracker:
                 continue
             tracks.append(
                 {
+                    "track_id": int(track_id),
+                    "bbox": [float(v) for v in xyxy],
+                    "confidence": float(conf),
+                    "class_name": class_name,
+                }
+            )
+        return tracks
+
+    def reset(self) -> None:
+        """clear tracker state between independent videos."""
+        if self.model is None:
+            return
+        predictor = getattr(self.model, "predictor", None)
+        if predictor is None:
+            return
+        for t in getattr(predictor, "trackers", []) or []:
+            if hasattr(t, "reset"):
+                t.reset()
