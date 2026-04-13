@@ -18,3 +18,8 @@ class EventLog:
 
     def to_dataframe(self):
         """return events as a pandas dataframe, or none if pandas is missing."""
+        try:
+            import pandas as pd
+        except Exception:
+            return None
+        return pd.DataFrame(self._events)
