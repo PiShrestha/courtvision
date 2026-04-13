@@ -65,3 +65,19 @@ class PerceptionPipeline:
 
                 if (frame_id - start_frame) % self.stride == 0:
                     tracks = self.tracker.update(frame, frame_id=frame_id)
+                    if self.homography is not None:
+                        for t in tracks:
+                            x1, _, x2, y2 = t["bbox"]
+                            # bottom-center: where the player meets the floor.
+                            t["court_xy"] = self.homography.pixel_to_court(
+                                (x1 + x2) / 2.0, y2
+                            )
+                    yield {
+                        "frame_id": frame_id,
+                        "frame_height": frame_h,
+                        "frame_width": frame_w,
+                        "tracks": tracks,
+                    }
+                frame_id += 1
+        finally:
+            cap.release()
