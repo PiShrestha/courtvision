@@ -56,3 +56,17 @@ class Homography:
             raise RuntimeError("call compute_homography() first")
         pt = np.array([[[float(px), float(py)]]], dtype=np.float32)
         out = cv2.perspectiveTransform(pt, self.H)
+        return float(out[0, 0, 0]), float(out[0, 0, 1])
+
+    @classmethod
+    def from_config(cls, config_path: str | Path) -> "Homography":
+        """load pixel<->court correspondences from a json file and fit.
+
+        expected schema:
+            {"pixel_points": [[x, y], ...], "court_points": [[x, y], ...]}
+        """
+        data = json.loads(Path(config_path).read_text())
+        h = cls()
+        h.set_correspondences(data["pixel_points"], data["court_points"])
+        h.compute_homography()
+        return h
