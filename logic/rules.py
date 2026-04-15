@@ -86,3 +86,24 @@ class RuleEngine:
                 if new_possession != self.possession:
                     self.possession = new_possession
                     events.append({
+                        "frame_id": frame_id,
+                        "event": "possession",
+                        "player": self.possession,
+                    })
+
+        # shot_attempt: abrupt upward ball motion in the image while someone
+        # had possession. stays in pixel space: the floor homography would
+        # flatten the ball's arc to a point and destroy the cue.
+        if self.last_ball_center_pixel is not None and self.possession is not None:
+            dy = ball_pixel_center[1] - self.last_ball_center_pixel[1]
+            if not self.shot_in_flight and dy <= -12:
+                self.shot_in_flight = True
+                self.last_shooter = self.possession
+                events.append({
+                    "frame_id": frame_id,
+                    "event": "shot_attempt",
+                    "player": self.last_shooter,
+                })
+
+        self.last_ball_center_pixel = ball_pixel_center
+        return events
