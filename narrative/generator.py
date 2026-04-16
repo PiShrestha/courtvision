@@ -70,3 +70,21 @@ class NarrativeGenerator:
 
 
 def _group_by_player(events: list[dict[str, Any]]) -> dict[int, Counter[str]]:
+    grouped: dict[int, Counter[str]] = {}
+    for e in events:
+        player = e.get("player")
+        if not isinstance(player, int):
+            continue
+        grouped.setdefault(player, Counter())[str(e.get("event"))] += 1
+    return grouped
+
+
+def _leader_by_fg(per_player: dict[int, Counter[str]]) -> int | None:
+    best_player, best_score = None, -1.0
+    for player, c in per_player.items():
+        attempts = c.get("shot_attempt", 0)
+        made = c.get("shot_made", 0)
+        score = (made / attempts) if attempts else 0.0
+        if score > best_score:
+            best_score, best_player = score, player
+    return best_player
