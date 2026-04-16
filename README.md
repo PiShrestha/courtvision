@@ -126,3 +126,34 @@ The default Slurm account is `cs6770_sp26`; edit `scripts/run_courtvision.sh` if
 
 Each config produces a report named `outputs/<video>_<model>_conf<NN>_imgsz<###>_<tracker>_<jobid>.txt` so sweep artifacts never collide.
 
+---
+
+## How the three stages fit together
+
+1. **Perception** — YOLOv8 runs on every (or every Nth) frame. Ultralytics' ByteTrack assigns persistent track IDs and handles short occlusions via Kalman prediction. Output: `{frame_id, frame_height, frame_width, tracks: [...]}`.
+
+2. **Symbolic reasoning** — a small Python rule engine assigns possession to the nearest player within a distance threshold and flags a shot attempt on sharp upward ball motion. Thresholds live in court coordinates when a homography is configured and fall back to auto-scaled pixel distances otherwise. Output: `[{frame_id, event, player}, ...]`.
+
+3. **Narrative** — the event log is formatted into a prompt for Gemini (when `GEMINI_API_KEY` is set) or passed to a deterministic local summariser that tallies possessions / shot attempts per player.
+
+A VLM never looks at raw frames in this design. It sees a pre-validated event stream, which is what stops the "ordered hallucination" failure mode that end-to-end video-to-text models tend to produce.
+
+---
+
+## What maps to what in the proposal
+
+| Proposal component | Status | Code |
+|---|---|---|
+| YOLO detection + ByteTrack | deployed | [perception/tracker.py](perception/tracker.py) |
+| Symbolic event rules (possession, shot_attempt) | deployed | [logic/rules.py](logic/rules.py) |
+| Planar homography module | scaffolded; works when a static calibration is given | [logic/homography.py](logic/homography.py) |
+| VLM narrative (Gemini, Llama 3.2-Vision planned) | deployed (Gemini) | [narrative/generator.py](narrative/generator.py) |
+| DINOv2 / SAM 2 re-identification | deferred past midterm (explicit in proposal) | — |
+
+Final-stage upgrades (per-frame court keypoint detection for moving-camera homography, custom basketball YOLO checkpoint with a hoop class, Llama 3.2-Vision) are listed in [CONSTRAINTS.md](CONSTRAINTS.md) § "Future work".
+
+---
+
+## License
+
+[MIT](LICENSE).
