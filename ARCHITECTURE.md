@@ -125,3 +125,34 @@ The layering — **YAML → CLI → env** — means any particular field can be 
 ## Data flow diagram (expanded)
 
 ```
+                                                                     (optional .env)
+                                                                           │
+                                                                     GEMINI_API_KEY
+                                                                           │
+                                                                           ▼
+   video.mov                                                     ┌──────────────────┐
+       │                                                         │   Gemini 1.5     │
+       ▼                                                         │  (text prompt)   │
+┌────────────┐   per-frame    ┌────────────┐   event list    ┌──────────────────────┐
+│ Perception │ ─────────────▶ │ RuleEngine │ ──────────────▶ │ NarrativeGenerator   │
+│  pipeline  │   (tracks)     │            │                 │  - gemini path       │
+│            │                │            │                 │  - local fallback    │
+└────────────┘                └────────────┘                 └──────────────────────┘
+       ▲                             ▲                                │
+       │                             │                                ▼
+  cv2.VideoCapture              Homography?                 ┌──────────────────┐
+  + Ultralytics                 (optional)                  │  report.py       │
+  ByteTrack                                                 │  - stats table   │
+                                                            │  - save to .txt  │
+                                                            └──────────────────┘
+```
+
+---
+
+## Extension points (not implemented yet; see [CONSTRAINTS.md](CONSTRAINTS.md))
+
+1. **Per-frame court keypoint detection** — would make the homography path usable on moving-camera clips. The current `Homography` class expects one fixed calibration for an entire video.
+2. **Custom basketball YOLO checkpoint** — unlocks a `hoop` class, which unblocks shot_made and enables ROI-based filtering to kill spectator detections.
+3. **Game-mode prior** (`--game-mode 1v1 | 2v2 | ...`) — cap the rule engine's player input at the top-N most confident tracks per frame.
+4. **SAM 2 + DINOv2** — the proposal's final-stage upgrade for occlusion-robust tracking and re-identification.
+5. **Llama 3.2-Vision** — replaces the Gemini API call with a local multimodal model conditioned on event log + keyframes.
