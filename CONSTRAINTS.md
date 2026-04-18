@@ -96,3 +96,27 @@ Same model, same input, same tracker — **3× drop from start to end**. The cam
 **Chosen:** `google-generativeai` with a local deterministic fallback.
 **Given up:** offline inference; no dependency on external API.
 **Won:** near-zero setup for narrative generation; we can swap in Llama 3.2-Vision at the `NarrativeGenerator.generate` boundary without touching the rest of the system.
+
+---
+
+## Known operational constraints
+
+| Constraint | Detail |
+|---|---|
+| Python ≥ 3.9 required | Ultralytics + torch 2.x drop Python 3.6 / 3.7. The repo targets Python 3.11 (tested). |
+| GPU strongly recommended | On A6000: ~60 fps for yolov8m @ 640. On CPU (login node): 3–8 fps — a 15 min clip takes hours. |
+| `--start` seeks to keyframe | `cv2.VideoCapture.set(POS_FRAMES, N)` snaps to the nearest preceding keyframe, so the first yielded frame can land a few frames before the requested start time. Acceptable for analysis; not for exact-timestamp alignment. |
+| Stride interacts with shot rule | `dy ≤ -12 px` fires per kept frame. At `stride=5` the ball moves ~5× further between samples, so the shot rule triggers more easily. Recalibrate the threshold when raising stride. |
+| HEVC `.mov` files may fail to decode | patent-encumbered codec; workaround is a one-time `ffmpeg -c:v libx264` transcode to mp4. |
+| Gemini deprecation warning | `google-generativeai` has been put into maintenance mode. Migration to `google-genai` is a follow-up. |
+
+---
+
+## Future work, ranked by expected impact
+
+1. **Custom basketball YOLO checkpoint** — unlocks `hoop`, enables `shot_made`, and cuts spectator over-detection because the model is trained on basketball data. Roboflow Universe datasets are a reasonable starting point.
+2. **Per-frame court keypoint detection** — enables a moving homography, which lets `RuleEngine` work in court-space on moving-camera footage and opens the door to court-polygon-based detection filtering (reject any player outside the court).
+3. **Game-mode prior (`--game-mode 1v1 | 2v2 | 3v3 | 5v5`)** — cap the rule engine's player input at the top-N most confident tracks per frame, where N is the known number of players. Cheap; deterministic; directly attacks the dominant failure mode.
+4. **Calibrated shot-attempt heuristic** — replace `dy ≤ -12 px` with a two-stage trigger: vertical-dominance + release-and-fall trajectory check over N frames, ideally anchored by a `hoop` track.
+5. **SAM 2 + DINOv2 for re-identification** — occlusion-robust pixel-level tracking; per-player embedding for identity continuity across camera-angle changes.
+6. **Llama 3.2-Vision narrative upgrade** — multimodal, local, conditioned on event log + keyframes.
