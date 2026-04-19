@@ -1,3 +1,24 @@
+# AI context file (local-only, never push to GitHub)
+*.local.*
+
+# Video / data assets (too large for Git)
+data/
+videos/
+outputs/
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# Model weights
+weights/
+*.pt
+*.onnx
+
+# OS junk
+.DS_Store
+Thumbs.db
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -205,3 +226,8 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# presentation artifacts (local only)
+presentation/
+*.pptx
+*.pdf
