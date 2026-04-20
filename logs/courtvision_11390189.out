@@ -1,0 +1,64 @@
+====================================================================
+CourtVision run
+  job tag      : 11390189
+  host         : udc-an25-20
+  date         : 2026-04-09T01:00:44-04:00
+  python       : Python 3.11.11
+  video        : 1v1-mk.mov
+  start..end   : 0s..90
+  stride       : 1
+  model        : yolov8x.pt
+  confidence   : 0.35
+  imgsz        : 1280
+  tracker      : bytetrack.yaml
+  homography   : <none>
+  output       : outputs/1v1-mk_yolov8x_conf35_imgsz1280_bytetrack_11390189.txt
+  cuda visible : 0
+  command      : python main.py --video 1v1-mk.mov --out-txt outputs/1v1-mk_yolov8x_conf35_imgsz1280_bytetrack_11390189.txt --start 0 --stride 1 --model yolov8x.pt --confidence 0.35 --imgsz 1280 --tracker bytetrack.yaml --end 90
+====================================================================
+==================================================
+  CourtVision – Neuro-Symbolic Basketball Analytics
+================================================== 
+
+▸ Stage 1: Perception
+  window: start=0.0s end=90.0s stride=1
+  model=yolov8x.pt conf=0.35 imgsz=1280 tracker=bytetrack.yaml
+  Got 2697 frames of tracking data.
+
+▸ Stage 2: Symbolic Reasoning
+  Detected 37 game events.
+
+▸ Stage 3: Narrative Report
+CourtVision Summary
+
+Total events: 37
+Player 1: possessions=1, shot_attempts=1, shot_made=0, fg%=0.0
+Player 2: possessions=1, shot_attempts=0, shot_made=0, fg%=0.0
+Player 179: possessions=7, shot_attempts=0, shot_made=0, fg%=0.0
+Player 263: possessions=1, shot_attempts=0, shot_made=0, fg%=0.0
+Player 500: possessions=1, shot_attempts=0, shot_made=0, fg%=0.0
+Player 597: possessions=1, shot_attempts=0, shot_made=0, fg%=0.0
+Player 683: possessions=4, shot_attempts=0, shot_made=0, fg%=0.0
+Player 782: possessions=1, shot_attempts=0, shot_made=0, fg%=0.0
+Player 840: possessions=1, shot_attempts=0, shot_made=0, fg%=0.0
+Player 1243: possessions=1, shot_attempts=0, shot_made=0, fg%=0.0
+Player 1258: possessions=1, shot_attempts=0, shot_made=0, fg%=0.0
+Player 1487: possessions=1, shot_attempts=0, shot_made=0, fg%=0.0
+Player 1627: possessions=1, shot_attempts=0, shot_made=0, fg%=0.0
+Player 1675: possessions=1, shot_attempts=0, shot_made=0, fg%=0.0
+Player 1817: possessions=2, shot_attempts=0, shot_made=0, fg%=0.0
+Player 1867: possessions=2, shot_attempts=0, shot_made=0, fg%=0.0
+Player 2249: possessions=3, shot_attempts=0, shot_made=0, fg%=0.0
+Player 2345: possessions=2, shot_attempts=0, shot_made=0, fg%=0.0
+Player 2446: possessions=2, shot_attempts=0, shot_made=0, fg%=0.0
+Player 2638: possessions=1, shot_attempts=0, shot_made=0, fg%=0.0
+Player 2675: possessions=1, shot_attempts=0, shot_made=0, fg%=0.0
+
+Scouting note: Player 1 was most efficient in this clip.
+
+Saved text report: outputs/1v1-mk_yolov8x_conf35_imgsz1280_bytetrack_11390189.txt
+
+==================================================
+  Pipeline complete.
+==================================================
+Done. Stats report at: outputs/1v1-mk_yolov8x_conf35_imgsz1280_bytetrack_11390189.txt

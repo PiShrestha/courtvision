@@ -1,0 +1,53 @@
+====================================================================
+CourtVision run
+  job tag      : 11389475
+  host         : udc-an25-20
+  date         : 2026-04-09T00:19:04-04:00
+  python       : Python 3.11.11
+  video        : 1v1-mk.mov
+  start..end   : 0s..90
+  stride       : 1
+  homography   : <none>
+  output       : outputs/1v1-mk_11389475.txt
+  cuda visible : 0
+  command      : python main.py --video 1v1-mk.mov --out-txt outputs/1v1-mk_11389475.txt --start 0 --stride 1 --end 90
+====================================================================
+==================================================
+  CourtVision – Neuro-Symbolic Basketball Analytics
+================================================== 
+
+▸ Stage 1: Perception
+  window: start=0.0s end=90.0s stride=1
+  Got 2697 frames of tracking data.
+
+▸ Stage 2: Symbolic Reasoning
+  Detected 22 game events.
+
+▸ Stage 3: Narrative Report
+CourtVision Summary
+
+Total events: 22
+Player 1: possessions=1, shot_attempts=1, shot_made=0, fg%=0.0
+Player 178: possessions=4, shot_attempts=0, shot_made=0, fg%=0.0
+Player 292: possessions=1, shot_attempts=0, shot_made=0, fg%=0.0
+Player 798: possessions=2, shot_attempts=0, shot_made=0, fg%=0.0
+Player 1674: possessions=1, shot_attempts=0, shot_made=0, fg%=0.0
+Player 2207: possessions=1, shot_attempts=0, shot_made=0, fg%=0.0
+Player 2268: possessions=1, shot_attempts=0, shot_made=0, fg%=0.0
+Player 2487: possessions=2, shot_attempts=0, shot_made=0, fg%=0.0
+Player 2567: possessions=1, shot_attempts=0, shot_made=0, fg%=0.0
+Player 2941: possessions=1, shot_attempts=0, shot_made=0, fg%=0.0
+Player 3109: possessions=1, shot_attempts=0, shot_made=0, fg%=0.0
+Player 3254: possessions=1, shot_attempts=0, shot_made=0, fg%=0.0
+Player 3345: possessions=2, shot_attempts=0, shot_made=0, fg%=0.0
+Player 3615: possessions=1, shot_attempts=0, shot_made=0, fg%=0.0
+Player 3692: possessions=1, shot_attempts=0, shot_made=0, fg%=0.0
+
+Scouting note: Player 1 was most efficient in this clip.
+
+Saved text report: outputs/1v1-mk_11389475.txt
+
+==================================================
+  Pipeline complete.
+==================================================
+Done. Stats report at: outputs/1v1-mk_11389475.txt
