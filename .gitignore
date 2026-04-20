@@ -30,6 +30,7 @@ experiments/demo/outputs_v2_live/
 experiments/demo/outputs_v2_smoke/
 experiments/demo/analysis/
 experiments/demo/analysis_v2/
+experiments/demo/analysis_v2_new_videos/
 experiments/demo/for_download/
 experiments/demo/labeled_compressed/
 *.tracks.jsonl
