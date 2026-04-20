@@ -12,7 +12,7 @@
 #SBATCH --mem=8G
 #SBATCH --cpus-per-task=4
 #SBATCH --partition=standard
-#SBATCH --account=biocomplexity
+#SBATCH --account=cs6770_sp26
 
 set -euo pipefail
 REPO_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"

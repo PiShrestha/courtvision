@@ -12,7 +12,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:a100:1
-#SBATCH --account=biocomplexity
+#SBATCH --account=cs6770_sp26
 
 set -euo pipefail
 REPO_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
