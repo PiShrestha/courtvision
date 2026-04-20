@@ -239,7 +239,7 @@ on makes, same model/clip combo:
 | 2 | yolov8x @ 1280 | static | 14 | **2** | 12 |
 | 3 | yolov8x @ 1280 | csrt→mil | 14 | **0** | 14 |
 
-rim=csrt zeroed out yolov8x's makes. On a static-camera clip the
+rim=csrt zeroed out yolov8x's makes. On a effectively-still-camera clip the
 "tracker" just adds rim noise; the static anchor is correct to the
 pixel.
 
@@ -285,7 +285,7 @@ Concrete per-run numbers for the three-video × rim-mode validation:
 
 Readings:
 
-- **Static-camera `1v1-mk.mov`:** `rim=static` (task 2) > `rim=csrt`
+- **Effectively-still-camera `1v1-mk.mov` (per-frame motion below MIL's ~10 px noise floor; all three clips are handheld — this one happens to be the steadiest):** `rim=static` (task 2) > `rim=csrt`
   (task 3) at tight horizontal gate (1.5×r = 54 px pad). Matches the
   drift analysis above: MIL wanders ~80 px, wider than the tolerance,
   so true makes get rejected. Widen the pad to 2.0×r (task 5) and
@@ -301,9 +301,47 @@ Readings:
   anchor.
 
 Takeaway: the v2 pipeline behaves correctly on `1v1-mk.mov` (verified
-hoop, static camera) but is bottlenecked on the other two clips by
-(a) placeholder hoop configs and (b) the lack of a real CSRT build.
-Fix both and I'd expect ddg/jason to track mk's FG numbers.
+hoop, effectively still camera) but is bottlenecked on the other two
+clips by (a) placeholder hoop configs and (b) the lack of a real CSRT
+build. Fix both and we can honestly remeasure motion on ddg/jason.
+
+### Camera motion — what the rim traces actually show
+
+Per-frame rim displacement stats from the live matrix:
+
+| Clip | dx/frame std | dy/frame std | 150-frame MA drift | reading |
+|---|---:|---:|---|---|
+| `1v1-mk.mov` (verified hoop) | 10.05 px | 6.91 px | random oscillation, no monotonic direction | camera motion < MIL noise floor → "still enough" for the rule |
+| `1v1-ddg.mp4` (placeholder) | 3.56 px | 2.39 px | slight drift (~10 px / clip) | suspiciously low std → tracker has no visible rim to lock onto; can't distinguish camera motion from "no signal" |
+| `1v1-jason.mp4` (placeholder) | 0.83 px | 0.61 px | zero drift | definitely not measuring a rim — 0.6 px std is below MIL's pixel-snap floor |
+
+Conclusion: **the placeholder hoops make the rim-trace stats meaningless
+on ddg and jason.** We cannot tell whether those cameras are static or
+panning until the configs are corrected. Until then, "all cameras are
+moving" is the safe assumption for ddg and jason, and the whole v2
+pipeline's performance ceiling on those clips depends on (a) a correct
+starting hoop, (b) a better rim locator than MIL.
+
+### Can a pixel-space rule handle a truly moving camera?
+
+Fundamentally, the shot_made rule asks "did the ball cross the rim's
+horizontal plane going downward in pixel space?" That's only a proxy
+for the physical rim crossing when apparent ball motion due to camera
+motion is small relative to real ball motion.
+
+| Camera motion / frame | MIL (~±10 px) | Real CSRT (est. ~±2 px) | Custom YOLO hoop class |
+|---|---|---|---|
+| <1 px (sub-frame handheld) | breaks (noise > signal) | works | works |
+| 1–5 px (walking handheld) | breaks | borderline | works |
+| 5–20 px (active pan) | breaks | breaks | works |
+| >20 px (cut/zoom) | breaks | breaks | borderline |
+
+Pixel-space rules are viable only while camera motion stays below the
+rim locator's error floor. MIL caps that at near-zero. Real CSRT lifts
+it one band. A custom basketball YOLO checkpoint decouples rule
+accuracy from tracker drift entirely — per-frame detection means
+there's nothing to drift. That's the only approach that works on fast
+pans without touching homography.
 
 ---
 
