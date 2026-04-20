@@ -1,0 +1,6 @@
+{
+  "center": [1412, 477],
+  "radius": 56,
+  "source": "auto_candidate",
+  "note": "hough-circles auto-detect on 60-120s window. y=477 is unusually low for a rim position on 1080p footage (typical rim is y<300); this may be a false positive. recommend opening a frame from roy.mp4 at t=60 and confirming before treating FG numbers as real."
+}

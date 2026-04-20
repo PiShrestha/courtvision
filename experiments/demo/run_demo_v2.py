@@ -125,6 +125,12 @@ def main() -> int:
     hoop = load_hoop(args.video, args.hoop, args.start, args.end)
     meta["hoop"] = hoop.to_dict()
 
+    # read the source fps early so we can scale rule windows at pipeline init.
+    _cap_probe = cv2.VideoCapture(args.video)
+    fps = float(_cap_probe.get(cv2.CAP_PROP_FPS) or 30.0)
+    _cap_probe.release()
+    meta["fps"] = round(fps, 3)
+
     if args.custom_model:
         # custom basketball checkpoint with a hoop class routes per-frame
         # rim detections into the rim tracker; the JSON hoop is kept only
@@ -158,12 +164,12 @@ def main() -> int:
         enter_zone_radius_factor=args.enter_zone_radius_factor,
         horizontal_pad_factor=args.horizontal_pad_factor,
         min_downward_velocity=args.min_downward_velocity,
+        fps=fps,
     )
 
     cap = cv2.VideoCapture(args.video)
     if not cap.isOpened():
         print(f"could not open {args.video}", file=sys.stderr); return 1
-    fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
     start_frame = int(round(args.start * fps))
     end_frame = int(round(args.end * fps)) if args.end is not None else None
     if start_frame > 0:

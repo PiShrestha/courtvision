@@ -44,7 +44,22 @@ class ShotPipelineV2:
         enter_zone_radius_factor: float = 2.0,
         horizontal_pad_factor: float = 1.5,
         min_downward_velocity: float = 1.5,
+        # frame-rate scaling. defaults tuned on 30 fps footage; 60 fps
+        # clips need the frame-based windows doubled so the *time* they
+        # represent stays constant.
+        fps: float = 30.0,
     ) -> None:
+        scale = max(1.0, float(fps) / 30.0)
+        occlusion_gap_frames = int(round(occlusion_gap_frames * scale))
+        attempt_to_made_window = int(round(attempt_to_made_window * scale))
+        cooldown_frames = int(round(cooldown_frames * scale))
+        history_frames = max(3, int(round(history_frames * scale)))
+        reseed_every = max(1, int(round(reseed_every * scale)))
+        # velocity thresholds scale inversely: at 60 fps, the frame-to-frame
+        # dy is half what it is at 30 fps for the same real-world velocity.
+        upward_trigger = float(upward_trigger) / scale
+        min_downward_velocity = float(min_downward_velocity) / scale
+        self._fps_scale = scale
         self.anchor = anchor
         self.rim = RimTracker(anchor=anchor, tracker_kind=tracker_kind,
                               reseed_every=reseed_every)

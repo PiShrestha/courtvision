@@ -62,7 +62,11 @@ class DuoTracker:
         self.min_bbox_h_frac = min_bbox_height_frac
         self.min_bbox_w_frac = min_bbox_width_frac
         self.slots: list[PlayerSlot] = []
-        self._next_id = 1
+        # slot ids are always {1, 2}. when a slot is dropped after a long
+        # occlusion and then re-acquired, we reuse the freed id rather than
+        # incrementing a counter — so downstream per-player stats stay stable
+        # across the whole clip.
+        self._used_ids: set[int] = set()
 
     # ---- public api ---------------------------------------------------------
 
@@ -109,9 +113,15 @@ class DuoTracker:
             vx, vy = slot.velocity
             slot.bbox = [bx1 + vx, by1 + vy, bx2 + vx, by2 + vy]
 
-        # drop slots that have been missing too long, let them re-acquire
-        # from a new detection next frame.
-        self.slots = [s for s in self.slots if s.frames_missed <= self.max_missed]
+        # drop slots that have been missing too long. freeing the id lets
+        # re-acquisition reuse {1, 2} rather than bumping to {3, 4, 5, …}.
+        survivors: list[PlayerSlot] = []
+        for s in self.slots:
+            if s.frames_missed <= self.max_missed:
+                survivors.append(s)
+            else:
+                self._used_ids.discard(s.slot_id)
+        self.slots = survivors
 
         # re-acquire: if we have free slots and unmatched detections, bind them.
         while len(self.slots) < 2 and unmatched_dets:
@@ -128,15 +138,21 @@ class DuoTracker:
             self._add_slot(frame, det, frame_id)
 
     def _add_slot(self, frame: np.ndarray, det: dict, frame_id: int) -> None:
+        # reuse the lowest free id in {1, 2}. if both are taken we bail
+        # without adding — the caller's `len(self.slots) < 2` gate already
+        # prevents this path, but the assertion keeps us honest.
+        new_id = 1 if 1 not in self._used_ids else 2
+        if new_id in self._used_ids:
+            return
         slot = PlayerSlot(
-            slot_id=self._next_id,
+            slot_id=new_id,
             bbox=list(det["bbox"]),
             hist=self._torso_hist(frame, det["bbox"]),
             confidence=float(det.get("confidence", 0.0)),
             last_seen=frame_id,
             frames_alive=1,
         )
-        self._next_id += 1
+        self._used_ids.add(new_id)
         self.slots.append(slot)
 
     def _update_slot(self, slot: PlayerSlot, frame: np.ndarray,

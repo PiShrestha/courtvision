@@ -1,0 +1,6 @@
+{
+  "center": [962, 256],
+  "radius": 46,
+  "source": "auto_candidate",
+  "note": "hough-circles auto-detect on 60-120s window. not yet human-verified. rerun detect_hoop on a wider time range (or open sample frame at t=60s) to confirm before treating FG numbers as real."
+}
