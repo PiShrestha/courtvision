@@ -1,0 +1,11 @@
+run_id,video,start,end,hoop_config,model,imgsz,confidence,rim_tracker_kind,rim_reseed_every,upward_trigger,history_frames,release_dist_px,approach_dist_px,cooldown_frames,possession_dist_px,occlusion_gap_frames,attempt_to_made_window,enter_zone_radius_factor,horizontal_pad_factor,min_downward_velocity
+0,1v1-mk.mov,267.81,337.52,experiments/demo/hoop_configs/1v1-mk.json,yolov8l.pt,640,0.3,flow,90,-10.0,6,60.0,260.0,20,140.0,15,120,2.5,2.0,1.0
+1,1v1-mk.mov,374.0,450.08,experiments/demo/hoop_configs/1v1-mk.json,yolov8l.pt,640,0.3,flow,90,-10.0,6,60.0,260.0,20,140.0,15,120,2.5,2.0,1.0
+2,1v1-ddg.mp4,929.45,990.58,experiments/demo/hoop_configs/1v1-ddg.json,yolov8l.pt,640,0.3,flow,90,-10.0,6,60.0,260.0,20,140.0,15,120,2.5,2.0,1.0
+3,1v1-ddg.mp4,1016.6,1078.34,experiments/demo/hoop_configs/1v1-ddg.json,yolov8l.pt,640,0.3,flow,90,-10.0,6,60.0,260.0,20,140.0,15,120,2.5,2.0,1.0
+4,1v1-jason.mp4,254.45,316.55,experiments/demo/hoop_configs/1v1-jason.json,yolov8l.pt,640,0.3,flow,90,-10.0,6,60.0,260.0,20,140.0,15,120,2.5,2.0,1.0
+5,1v1-jason.mp4,651.45,724.18,experiments/demo/hoop_configs/1v1-jason.json,yolov8l.pt,640,0.3,flow,90,-10.0,6,60.0,260.0,20,140.0,15,120,2.5,2.0,1.0
+6,1v1-nasir.mp4,788.65,852.36,experiments/demo/hoop_configs/1v1-nasir.json,yolov8l.pt,640,0.3,flow,90,-10.0,6,60.0,260.0,20,140.0,15,120,2.5,2.0,1.0
+7,1v1-nasir.mp4,1773.24,1852.06,experiments/demo/hoop_configs/1v1-nasir.json,yolov8l.pt,640,0.3,flow,90,-10.0,6,60.0,260.0,20,140.0,15,120,2.5,2.0,1.0
+8,1v1-roy.mp4,179.01,268.3,experiments/demo/hoop_configs/1v1-roy.json,yolov8l.pt,640,0.3,flow,90,-10.0,6,60.0,260.0,20,140.0,15,120,2.5,2.0,1.0
+9,1v1-roy.mp4,321.29,398.61,experiments/demo/hoop_configs/1v1-roy.json,yolov8l.pt,640,0.3,flow,90,-10.0,6,60.0,260.0,20,140.0,15,120,2.5,2.0,1.0

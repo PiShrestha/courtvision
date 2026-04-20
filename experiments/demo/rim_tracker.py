@@ -32,7 +32,7 @@ from hoop import Hoop
 class TrackedHoop:
     center: tuple[int, int]
     radius: int
-    source: str            # "static" | "tracker" | "reseed"
+    source: str            # "static" | "tracker" | "reseed" | "detection" | "flow"
 
 
 _FALLBACK_CHAIN = ("csrt", "kcf", "mil")
@@ -80,7 +80,11 @@ class RimTracker:
         reseed_every: int = 90,
         max_jump_px: int = 30,
         box_scale: float = 2.4,
+        flow_max_per_frame_jump_px: int = 25,
     ) -> None:
+        # flow mode bounds *per-frame* displacement. 25 px/frame is a very
+        # fast pan at 30 fps (~750 px/s); anything faster is almost certainly
+        # a cut or a lost track.
         # default changed from "csrt" to "static" after the live matrix
         # showed MIL (our opencv fallback for CSRT) drifts ~160px on a
         # static-camera clip. the tracker path is still available but
@@ -90,6 +94,7 @@ class RimTracker:
         self.reseed_every = max(1, int(reseed_every))
         self.max_jump = int(max_jump_px)
         self.box_scale = float(box_scale)
+        self.flow_max_per_frame_jump = int(flow_max_per_frame_jump_px)
         self._tracker: Any = None
         self._last_seeded_frame: int = -10 ** 9
         self._last_center: tuple[int, int] = anchor.center
@@ -116,6 +121,13 @@ class RimTracker:
         # pure static mode: every frame resolves to the anchor, no tracker work.
         if self.kind == "static":
             return self._static_hoop()
+
+        # optical-flow mode: track feature points in the backboard/rim
+        # neighbourhood and translate the anchor by their median flow. works
+        # on any handheld footage without ML; defeated by large zooms (the
+        # flow field stops being a pure translation).
+        if self.kind == "flow":
+            return self._flow_update(frame, frame_id)
 
         # (re)seed on the first call and every reseed_every frames.
         if (self._tracker is None
@@ -150,6 +162,118 @@ class RimTracker:
         self._last_center = (cx, cy)
         self._last_radius = r
         return TrackedHoop(center=(cx, cy), radius=r, source="tracker")
+
+    # ---- optical-flow path ---------------------------------------------------
+
+    def _flow_update(self, frame: np.ndarray, frame_id: int) -> TrackedHoop:
+        """pyramidal lucas-kanade on good features in a box around the rim.
+
+        state kept between calls:
+          _flow_prev_gray  previous frame (grayscale)
+          _flow_points     feature points currently being tracked (Nx1x2)
+          _flow_center     current rim center (may differ from anchor)
+          _flow_radius     current rim radius (copied from anchor; zoom
+                            would require estimating scale — deferred)
+
+        failure modes and their fallbacks:
+          - fewer than 4 points survived the LK match: reseed features
+            around the last known center.
+          - median flow > max_jump: treat as lost, reseed.
+          - returns source="reseed" on seeding frames and source="flow"
+            on successful update frames.
+        """
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        cx, cy = getattr(self, "_flow_center", self.anchor.center)
+        r = getattr(self, "_flow_radius", self.anchor.radius)
+
+        needs_seed = (
+            not hasattr(self, "_flow_prev_gray") or self._flow_prev_gray is None
+            or not hasattr(self, "_flow_points") or self._flow_points is None
+            or len(self._flow_points) < 4
+            or frame_id - self._last_seeded_frame >= self.reseed_every
+        )
+        if needs_seed:
+            self._seed_flow(gray, (cx, cy), r)
+            self._last_seeded_frame = frame_id
+            self._flow_prev_gray = gray
+            return TrackedHoop(center=(cx, cy), radius=r, source="reseed")
+
+        p0 = self._flow_points
+        p1, status, _ = cv2.calcOpticalFlowPyrLK(
+            self._flow_prev_gray, gray, p0, None,
+            winSize=(15, 15), maxLevel=3,
+            criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.03),
+        )
+        if p1 is None or status is None:
+            self._flow_prev_gray = gray
+            self._seed_flow(gray, (cx, cy), r)
+            return self._static_hoop()
+
+        good_new = p1[status.flatten() == 1]
+        good_old = p0[status.flatten() == 1]
+        if len(good_new) < 4:
+            self._flow_prev_gray = gray
+            self._seed_flow(gray, (cx, cy), r)
+            return self._static_hoop()
+
+        dxy = good_new - good_old
+        # median flow is robust to outliers (individual players passing
+        # in front of the backboard would otherwise skew a mean).
+        mdx = float(np.median(dxy[:, 0, 0]))
+        mdy = float(np.median(dxy[:, 0, 1]))
+
+        # reject implausible frame-to-frame jumps (usually a lost track).
+        if abs(mdx) > self.flow_max_per_frame_jump or abs(mdy) > self.flow_max_per_frame_jump:
+            self._flow_prev_gray = gray
+            self._seed_flow(gray, (cx, cy), r)
+            return self._static_hoop()
+
+        new_cx = int(round(cx + mdx))
+        new_cy = int(round(cy + mdy))
+        H, W = gray.shape[:2]
+        if not (0 <= new_cx < W and 0 <= new_cy < H):
+            self._flow_prev_gray = gray
+            self._seed_flow(gray, (cx, cy), r)
+            return self._static_hoop()
+
+        self._flow_center = (new_cx, new_cy)
+        self._flow_radius = r
+        self._flow_points = good_new.reshape(-1, 1, 2).astype(np.float32)
+        self._flow_prev_gray = gray
+        self._last_center = (new_cx, new_cy)
+        self._last_radius = r
+        return TrackedHoop(center=(new_cx, new_cy), radius=r, source="flow")
+
+    def _seed_flow(self, gray: np.ndarray, center: tuple[int, int], r: int) -> None:
+        """(re)extract good features in an annulus around the rim center.
+
+        we mask OUT the rim disc itself (net pixels are thin/noisy) and ONLY
+        allow features in the surrounding backboard region, which is where
+        strong corners live on basketball footage.
+        """
+        H, W = gray.shape[:2]
+        mask = np.zeros_like(gray, dtype=np.uint8)
+        # backboard-sized rectangle centred on the rim, height = 2r above
+        # and 0.5r below, width = 3r on each side.
+        x1 = max(0, center[0] - int(3 * r))
+        x2 = min(W, center[0] + int(3 * r))
+        y1 = max(0, center[1] - int(2.5 * r))
+        y2 = min(H, center[1] + int(0.7 * r))
+        if x2 <= x1 or y2 <= y1:
+            self._flow_points = None
+            return
+        cv2.rectangle(mask, (x1, y1), (x2, y2), 255, -1)
+        # subtract the rim itself (noisy net) so we don't chase the ball
+        # passing through.
+        cv2.circle(mask, center, int(1.1 * r), 0, -1)
+
+        pts = cv2.goodFeaturesToTrack(
+            gray, maxCorners=60, qualityLevel=0.02, minDistance=6,
+            blockSize=7, mask=mask,
+        )
+        self._flow_center = center
+        self._flow_radius = r
+        self._flow_points = pts if pts is not None else None
 
     def _static_hoop(self) -> TrackedHoop:
         self._last_center = self.anchor.center
