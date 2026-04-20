@@ -1,0 +1,9 @@
+{
+  "center": [855, 202],
+  "radius": 36,
+  "source": "auto",
+  "alternative_candidates": [
+    {"center": [1368, 216], "radius": 25, "note": "second orange blob, may be opposite hoop"}
+  ],
+  "note": "auto-selected by color + persistence analysis. verify against hoop_configs/1v1-mk_sample.jpg and correct if wrong."
+}

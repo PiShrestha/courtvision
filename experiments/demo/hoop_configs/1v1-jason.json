@@ -1,0 +1,6 @@
+{
+  "center": [960, 200],
+  "radius": 40,
+  "source": "manual_guess",
+  "note": "auto-detect failed (no persistent orange rim). PLACEHOLDER — review hoop_configs/1v1-jason_sample.jpg and correct before using for shot_made events."
+}
