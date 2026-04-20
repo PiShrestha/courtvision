@@ -1,0 +1,8 @@
+frame_id,event,player,notes,seen_in
+8148,shot_made,2,"v1 yolov8x @ 1280 agrees",run30-run35
+8152,shot_made,2,"v2 rim-plane crossing (4-frame offset vs v1)",sws03/06/09/15
+8527,shot_made,-,"v2 finds consistently; verify vs video",sws03/06/09/15
+8531,shot_made,-,"v2 finds consistently; likely same shot as 8527",sws02/03/05/06/15
+9267,shot_made,-,"v2 weak: only sws15; likely FP",sws15
+9939,shot_made,-,"v2 finds consistently",sws03/06/09/15
+9980,shot_made,-,"v2 sws02/05 variant",sws02/05

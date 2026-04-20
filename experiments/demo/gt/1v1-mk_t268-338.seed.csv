@@ -1,0 +1,2 @@
+frame_id,event,player,notes
+8148,shot_made,2,"seed from v1 yolov8x@1280 (c=0.25 ut=-8 run30). manually verify by watching the matching annotated mp4; this is a pseudo-oracle, not a human label."
