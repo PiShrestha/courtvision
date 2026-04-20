@@ -62,6 +62,14 @@ class ShotAttemptV2:
         approach_dist_px: float = 260.0,
         cooldown_frames: int = 20,
         possession_dist_px: float = 140.0,
+        # possession hysteresis: avoid flipping the current possession on a
+        # single noisy frame where the ball is almost equidistant between
+        # P1 and P2. we require the "new" candidate to be closer for at
+        # least `possession_switch_evidence` consecutive ball-seen frames,
+        # AND meaningfully closer (ratio >= `possession_switch_ratio`) in
+        # those frames, before the possession flips.
+        possession_switch_evidence: int = 4,
+        possession_switch_ratio: float = 1.25,
     ) -> None:
         self.upward_trigger = float(upward_trigger)
         self.history_len = max(3, int(history_frames))
@@ -69,10 +77,16 @@ class ShotAttemptV2:
         self.approach_dist = float(approach_dist_px)
         self.cooldown = max(0, int(cooldown_frames))
         self.possession_dist_px = float(possession_dist_px)
+        self.switch_evidence = max(1, int(possession_switch_evidence))
+        self.switch_ratio = max(1.0, float(possession_switch_ratio))
         self.ball_history: deque[tuple[int, tuple[float, float]]] = deque(
             maxlen=self.history_len)
         self.player_dist_history: deque[float] = deque(maxlen=self.history_len)
         self.current_possession: _Possession | None = None
+        # running count of consecutive frames where a specific "new"
+        # player beat the incumbent by the switch_ratio margin.
+        self._switch_candidate: int | None = None
+        self._switch_streak: int = 0
         self.last_attempt_frame: int = -10 ** 9
         self.attempt_in_flight: bool = False
 
@@ -133,35 +147,92 @@ class ShotAttemptV2:
         ball_center: tuple[float, float] | None,
         player_tracks: list[dict],
     ) -> dict[str, Any] | None:
+        """possession rule with hysteresis.
+
+        Why: when the ball sits roughly between two players, the bare
+        "nearest-player" rule flips repeatedly from frame to frame on
+        detection noise — flooding the event log with spurious possession
+        events. We now require a candidate player to be *meaningfully*
+        closer (ratio >= switch_ratio) for a run of `switch_evidence`
+        consecutive ball-seen frames before swapping possession.
+
+        The incumbent keeps possession through:
+          - frames with no ball detection,
+          - frames where the ball is present but nobody is within
+            possession_dist_px,
+          - frames where the candidate's lead over the incumbent is less
+            than switch_ratio (i.e. ambiguous proximity).
+        """
+        # keep the incumbent's last known center fresh even when the ball
+        # isn't visible this frame, so release_distance stays current.
         if ball_center is None or not player_tracks:
-            # keep the last known player center fresh even without a ball,
-            # so release_distance is measured against a current position.
             if self.current_possession is not None and player_tracks:
                 for t in player_tracks:
                     if int(t.get("track_id", -1)) == self.current_possession.player_id:
                         self.current_possession.last_player_center = _center(t["bbox"])
                         break
             return None
-        closest = min(player_tracks,
-                      key=lambda t: _distance(ball_center, _center(t["bbox"])))
-        d = _distance(ball_center, _center(closest["bbox"]))
-        if d > self.possession_dist_px:
+
+        # distance from ball to each tracked player.
+        dists = [(int(t["track_id"]), _center(t["bbox"]),
+                  _distance(ball_center, _center(t["bbox"])))
+                 for t in player_tracks]
+        if not dists:
             return None
-        new_player = int(closest["track_id"])
-        new_center = _center(closest["bbox"])
-        event: dict[str, Any] | None = None
-        if (self.current_possession is None
-                or self.current_possession.player_id != new_player):
-            self.current_possession = _Possession(new_player, frame_id, new_center)
-            event = {
-                "frame_id": frame_id,
-                "event": "possession",
-                "player": new_player,
-            }
-        else:
+        dists.sort(key=lambda d: d[2])
+        best_id, best_center, best_d = dists[0]
+
+        # nobody close enough: hold whatever possession we already had.
+        if best_d > self.possession_dist_px:
+            self._switch_candidate = None
+            self._switch_streak = 0
+            return None
+
+        # bootstrap: first possession assignment.
+        if self.current_possession is None:
+            self.current_possession = _Possession(best_id, frame_id, best_center)
+            self._switch_candidate = None
+            self._switch_streak = 0
+            return {"frame_id": frame_id, "event": "possession", "player": best_id}
+
+        incumbent_id = self.current_possession.player_id
+
+        # incumbent still closest: stay. update state, clear switch counter.
+        if best_id == incumbent_id:
             self.current_possession.last_frame = frame_id
-            self.current_possession.last_player_center = new_center
-        return event
+            self.current_possession.last_player_center = best_center
+            self._switch_candidate = None
+            self._switch_streak = 0
+            return None
+
+        # candidate is closer. require it to beat the incumbent by the
+        # switch_ratio margin, for switch_evidence consecutive ball-seen
+        # frames, before we flip.
+        incumbent_d = next((d for (tid, _, d) in dists if tid == incumbent_id), None)
+        if incumbent_d is None:
+            # incumbent not even in this frame's detections — likely a short
+            # occlusion. hold possession; don't start a switch streak yet.
+            return None
+        if incumbent_d < best_d * self.switch_ratio:
+            # ratio too close to call; reset streak.
+            self._switch_candidate = None
+            self._switch_streak = 0
+            return None
+
+        if self._switch_candidate == best_id:
+            self._switch_streak += 1
+        else:
+            self._switch_candidate = best_id
+            self._switch_streak = 1
+
+        if self._switch_streak < self.switch_evidence:
+            return None
+
+        # evidence accumulated: flip possession.
+        self.current_possession = _Possession(best_id, frame_id, best_center)
+        self._switch_candidate = None
+        self._switch_streak = 0
+        return {"frame_id": frame_id, "event": "possession", "player": best_id}
 
     def _all_predicates_satisfied(
         self,

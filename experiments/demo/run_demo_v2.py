@@ -61,6 +61,12 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--approach-dist-px", type=float, default=260.0)
     ap.add_argument("--cooldown-frames", type=int, default=20)
     ap.add_argument("--possession-dist-px", type=float, default=140.0)
+    ap.add_argument("--possession-switch-evidence", type=int, default=4,
+                    help="consecutive ball-seen frames of sustained closer "
+                          "proximity required before possession flips")
+    ap.add_argument("--possession-switch-ratio", type=float, default=1.25,
+                    help="candidate must be this many times closer than "
+                          "the incumbent to count as evidence")
     # made v2
     ap.add_argument("--occlusion-gap-frames", type=int, default=10)
     ap.add_argument("--attempt-to-made-window", type=int, default=90)
@@ -159,6 +165,8 @@ def main() -> int:
         approach_dist_px=args.approach_dist_px,
         cooldown_frames=args.cooldown_frames,
         possession_dist_px=args.possession_dist_px,
+        possession_switch_evidence=args.possession_switch_evidence,
+        possession_switch_ratio=args.possession_switch_ratio,
         occlusion_gap_frames=args.occlusion_gap_frames,
         attempt_to_made_window=args.attempt_to_made_window,
         enter_zone_radius_factor=args.enter_zone_radius_factor,

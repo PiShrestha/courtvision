@@ -38,6 +38,8 @@ class ShotPipelineV2:
         approach_dist_px: float = 260.0,
         cooldown_frames: int = 20,
         possession_dist_px: float = 140.0,
+        possession_switch_evidence: int = 4,
+        possession_switch_ratio: float = 1.25,
         # made tunables
         occlusion_gap_frames: int = 10,
         attempt_to_made_window: int = 90,
@@ -70,6 +72,8 @@ class ShotPipelineV2:
             approach_dist_px=approach_dist_px,
             cooldown_frames=cooldown_frames,
             possession_dist_px=possession_dist_px,
+            possession_switch_evidence=possession_switch_evidence,
+            possession_switch_ratio=possession_switch_ratio,
         )
         self.made = ShotMadeV2(
             occlusion_gap_frames=occlusion_gap_frames,
