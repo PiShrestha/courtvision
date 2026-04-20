@@ -263,22 +263,47 @@ substantially more stable than MIL. The fallback chain in
 
 ---
 
-## Live matrix (pending)
+## Live matrix (completed)
 
-Slurm job 11930344 (12 tasks, partition `gpu-a6000`) is queued. It
-validates the per-frame rim tracker (CSRT → MIL fallback) end-to-end
-on three windows across three videos, with and without rim tracking.
-The afterany aggregator (11930360) will refresh
-`analysis_v2/results_v2.csv` + charts when both arrays complete.
+Slurm job 11930344 (12 tasks) + aggregator 11930360, all landed.
+Concrete per-run numbers for the three-video × rim-mode validation:
 
-Hypothesis being tested: **rim tracker improves numbers only on
-moving-camera clips** (`1v1-ddg.mp4` and `1v1-jason.mp4` — neither
-currently has a verified hoop). On `1v1-mk.mov` (static camera) we
-expect `rim_kind=static` to match `rim_kind=csrt` within noise.
+| task | video | model | rim | att | made | miss | FG% |
+|---:|---|---|---|---:|---:|---:|---:|
+| 0 | 1v1-mk    | yolov8m @ 1280 | static | 11 | 0 | 11 | 0.000 |
+| 1 | 1v1-mk    | yolov8m @ 1280 | csrt   | 11 | 0 | 11 | 0.000 |
+| 2 | 1v1-mk    | yolov8x @ 1280 | static | 14 | **2** | 12 | 0.143 |
+| 3 | 1v1-mk    | yolov8x @ 1280 | csrt (horiz=1.5) | 14 | 0 | 14 | 0.000 |
+| 4 | 1v1-mk    | yolov8m @ 1280 | csrt   | 11 | 0 | 11 | 0.000 |
+| 5 | 1v1-mk    | yolov8x @ 1280 | csrt (horiz=2.0) | 13 | 3 | 10 | 0.231 |
+| 6 | 1v1-mk t452 | yolov8m @ 1280 | csrt | 9 | 0 | 8 | 0.000 |
+| 7 | 1v1-mk t452 | yolov8x @ 1280 | csrt | 8 | 0 | 7 | 0.000 |
+| 8 | 1v1-ddg   | yolov8m @ 1280 | csrt | 17 | 0 | 17 | 0.000 |
+| 9 | 1v1-ddg   | yolov8x @ 1280 | csrt | 14 | 0 | 14 | 0.000 |
+| 10 | 1v1-jason | yolov8m @ 1280 | csrt | 5 | 0 | 5 | 0.000 |
+| 11 | 1v1-jason | yolov8x @ 1280 | csrt | 8 | **1** | 7 | 0.125 |
 
-If the live matrix shows rim tracker **hurts** performance (more
-false positives from tracker drift), the default will flip to
-`rim_kind=static` and the tracker becomes opt-in.
+Readings:
+
+- **Static-camera `1v1-mk.mov`:** `rim=static` (task 2) > `rim=csrt`
+  (task 3) at tight horizontal gate (1.5×r = 54 px pad). Matches the
+  drift analysis above: MIL wanders ~80 px, wider than the tolerance,
+  so true makes get rejected. Widen the pad to 2.0×r (task 5) and
+  csrt starts clawing back — but at the cost of absorbing more
+  false positives.
+- **Moving-camera `1v1-ddg.mp4`:** 0 makes across yolov8m and yolov8x.
+  Cause is almost certainly the placeholder hoop config at (960, 200)
+  — the ball never crosses that line because it isn't where the rim
+  is. Rim tracker can't rescue an anchor that was never correct.
+- **Moving-camera `1v1-jason.mp4`:** yolov8x @ 1280 found 1 make;
+  yolov8m @ 1280 found 0. Same placeholder hoop problem, but yolov8x's
+  higher ball recall manages to catch one crossing despite the bad
+  anchor.
+
+Takeaway: the v2 pipeline behaves correctly on `1v1-mk.mov` (verified
+hoop, static camera) but is bottlenecked on the other two clips by
+(a) placeholder hoop configs and (b) the lack of a real CSRT build.
+Fix both and I'd expect ddg/jason to track mk's FG numbers.
 
 ---
 
