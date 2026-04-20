@@ -49,15 +49,18 @@ a symptom of the P1/P2 label-flip issue below.
 
 At imgsz=640, yolov8l's "sports ball" class needs the ball to occupy roughly
 ≥8×8 px on the output feature map. The ddg footage is shot from further back
-than mk / jason / roy / nasir, making the ball cover far fewer pixels. Two
-low-cost fixes:
+than mk / jason / roy / nasir, making the ball cover far fewer pixels.
 
-1. Rerun ddg at imgsz=1280 — the v1 sweep showed this is the knee for
-   ball recall on zoomed-out basketball footage.
-2. Provide a **custom basketball checkpoint** (the approved integration
-   already in place — see [ARCHITECTURE_v2.md](../ARCHITECTURE_v2.md) §
-   "Custom basketball checkpoint"). A dataset-specific model trained on
-   small-ball crops would lift recall here.
+**Targeted rerun at yolov8x + imgsz=1280 (jobs 11974488 + 11974494)**
+did NOT fix it — ball detection rose from 0.5% / 1.8% only to 2.1% / 1.3%.
+So this is not a resolution or model-size problem. COCO's generic
+`sports_ball` class simply doesn't fire on whatever the ddg ball looks
+like (color, lighting, or motion blur mismatch with the training set).
+
+The only unblock is a **custom basketball checkpoint** via the already-
+integrated `--custom-model` pathway (see [ARCHITECTURE_v2.md](../ARCHITECTURE_v2.md)
+§ "Custom basketball checkpoint"). Rerunning ddg on any COCO-only model at
+any imgsz is now known to be a dead end.
 
 ## Why "P1 vs P2" labels are not stable across clips
 

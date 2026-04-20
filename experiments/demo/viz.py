@@ -33,12 +33,22 @@ def annotate_video(
     output_path: str,
     start_seconds: float = 0.0,
     end_seconds: float | None = None,
+    rim_trace: Iterable[dict[str, Any]] | None = None,
 ) -> None:
-    """second-pass annotator: read the video, draw, write mp4."""
+    """second-pass annotator: read the video, draw, write mp4.
+
+    rim_trace (optional): per-frame dicts with {frame_id, center, radius,
+    source} produced by RimTracker. when provided, the magenta hoop dot
+    tracks the per-frame rim position instead of staying pinned to the
+    static JSON anchor.
+    """
     tracks_index = {f["frame_id"]: f for f in tracks_by_frame}
     events_by_frame: dict[int, list[dict]] = {}
     for e in events:
         events_by_frame.setdefault(int(e["frame_id"]), []).append(e)
+    rim_by_frame: dict[int, dict] = {}
+    for h in (rim_trace or []):
+        rim_by_frame[int(h["frame_id"])] = h
 
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -70,7 +80,12 @@ def annotate_video(
             for e in events_by_frame.get(frame_id, []):
                 recent_events.append((frame_id, e))
 
-            _draw_hoop(frame, hoop)
+            # prefer the per-frame rim trace; fall back to the static anchor.
+            live = rim_by_frame.get(frame_id)
+            if live is not None:
+                _draw_live_hoop(frame, live)
+            else:
+                _draw_hoop(frame, hoop)
             frame_data = tracks_index.get(frame_id, {})
             _draw_players(frame, [t for t in frame_data.get("tracks", [])
                                     if t.get("class_name") == "player"])
@@ -114,6 +129,20 @@ def _draw_hoop(frame: np.ndarray, hoop: Hoop) -> None:
     cv2.circle(frame, hoop.center, hoop.radius, HOOP_COLOR, 2)
     cv2.drawMarker(frame, hoop.center, HOOP_COLOR,
                     cv2.MARKER_CROSS, 14, 2)
+
+
+def _draw_live_hoop(frame: np.ndarray, live: dict[str, Any]) -> None:
+    """rim from the per-frame trace. tags the source in the corner so it's
+    obvious whether the pipeline is using static anchor vs tracker vs
+    detection."""
+    cx, cy = [int(v) for v in live["center"]]
+    r = int(live.get("radius", 30))
+    src = str(live.get("source", "?"))
+    cv2.circle(frame, (cx, cy), r, HOOP_COLOR, 2)
+    cv2.drawMarker(frame, (cx, cy), HOOP_COLOR, cv2.MARKER_CROSS, 14, 2)
+    # small label near the rim circle.
+    _text_with_shadow(frame, f"hoop:{src}", (cx + r + 4, cy - 4),
+                        HOOP_COLOR, 0.5, 1)
 
 
 def _draw_events_banner(frame: np.ndarray, recent: list[tuple[int, dict]]) -> None:

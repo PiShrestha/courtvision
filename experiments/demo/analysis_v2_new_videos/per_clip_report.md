@@ -2,13 +2,15 @@
 
 Focus is strictly the two primary slots (P1, P2). Any tracks that escalated past those ids are bucketed as 'other' — if that bucket is non-empty the DuoTracker lost identity during the clip.
 
-total clips: **10**
+total clips: **12**
 
 ## headline table
 
 | clip | window | dur | fps | P1 att/made/FG% | P2 att/made/FG% | overall FG% | P1 poss | P2 poss | other |
 |---|---|---|---|---|---|---|---|---|---|
+| 1v1-ddg | 929-991s | 1m01s | 60.0 | 0/0/— | 0/0/— | — | 0.0s | 0.0s | 0 events from ids none |
 | 1v1-mk | 268-338s | 1m09s | 29.969 | 11/0/0% | 0/0/— | 0% | 1m07s | 1.6s | 0 events from ids none |
+| 1v1-ddg | 1017-1078s | 1m01s | 60.0 | 0/0/— | 0/0/— | — | 56.1s | 0.0s | 0 events from ids none |
 | 1v1-mk | 374-450s | 1m16s | 29.969 | 10/0/0% | 0/0/— | 0% | 1m13s | 0.0s | 0 events from ids none |
 | 1v1-ddg | 929-991s | 1m01s | 60.0 | 0/0/— | 0/0/— | — | 23.8s | 0.0s | 0 events from ids none |
 | 1v1-ddg | 1017-1078s | 1m01s | 60.0 | 0/0/— | 0/0/— | — | 0.0s | 0.0s | 0 events from ids none |
@@ -18,6 +20,23 @@ total clips: **10**
 | 1v1-nasir | 1773-1852s | 1m18s | 59.94 | 5/0/0% | 0/0/— | 0% | 1m02s | 16.6s | 0 events from ids none |
 | 1v1-roy | 179-268s | 1m29s | 60.0 | 0/0/— | 4/0/0% | 0% | 7.6s | 35.3s | 0 events from ids none |
 | 1v1-roy | 321-399s | 1m17s | 60.0 | 3/1/33% | 10/1/10% | 15% | 19.4s | 57.9s | 0 events from ids none |
+
+---
+
+## 1v1-ddg  (929–991s)
+
+- **duration:** 1m01s at 60.0 fps (3668 frames processed)
+- **model:** yolov8x.pt @ imgsz=1280
+- **hoop:** {'center': [960, 200], 'radius': 40, 'source': 'manual_guess'}
+- **total events logged:** 0
+
+### per-player metrics
+
+| player | attempts | made | miss | FG% | possession |
+|---|---:|---:|---:|---:|---:|
+| P1 | 0 | 0 | 0 | — | 0.0s |
+| P2 | 0 | 0 | 0 | — | 0.0s |
+| **total** | **0** | **0** | 0 | **—** | 0.0s (0.0 coverage) |
 
 ---
 
@@ -35,6 +54,23 @@ total clips: **10**
 | P1 | 11 | 0 | 10 | 0% | 1m07s |
 | P2 | 0 | 0 | 0 | — | 1.6s |
 | **total** | **11** | **0** | 10 | **0%** | 1m09s (0.99 coverage) |
+
+---
+
+## 1v1-ddg  (1017–1078s)
+
+- **duration:** 1m01s at 60.0 fps (3704 frames processed)
+- **model:** yolov8x.pt @ imgsz=1280
+- **hoop:** {'center': [960, 200], 'radius': 40, 'source': 'manual_guess'}
+- **total events logged:** 1
+
+### per-player metrics
+
+| player | attempts | made | miss | FG% | possession |
+|---|---:|---:|---:|---:|---:|
+| P1 | 0 | 0 | 0 | — | 56.1s |
+| P2 | 0 | 0 | 0 | — | 0.0s |
+| **total** | **0** | **0** | 0 | **—** | 56.1s (0.91 coverage) |
 
 ---
 

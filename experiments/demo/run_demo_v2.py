@@ -229,7 +229,8 @@ def main() -> int:
     if args.save_video:
         video_out = out_prefix.with_suffix(".mp4")
         annotate_video(args.video, tracks_by_frame, events, hoop,
-                       str(video_out), start_seconds=args.start, end_seconds=args.end)
+                       str(video_out), start_seconds=args.start, end_seconds=args.end,
+                       rim_trace=hoop_trace)
 
     total_s = time.time() - start_wall
     fg = field_goal_stats(events)
