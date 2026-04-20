@@ -76,11 +76,15 @@ class RimTracker:
     def __init__(
         self,
         anchor: Hoop,
-        tracker_kind: str = "csrt",
+        tracker_kind: str = "static",
         reseed_every: int = 90,
-        max_jump_px: int = 80,
+        max_jump_px: int = 30,
         box_scale: float = 2.4,
     ) -> None:
+        # default changed from "csrt" to "static" after the live matrix
+        # showed MIL (our opencv fallback for CSRT) drifts ~160px on a
+        # static-camera clip. the tracker path is still available but
+        # opt-in; see FINDINGS_v2.md "rim tracker drift" section.
         self.anchor = anchor
         self.kind = tracker_kind
         self.reseed_every = max(1, int(reseed_every))

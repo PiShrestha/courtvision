@@ -50,8 +50,8 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--tracker", default="bytetrack.yaml")
     ap.add_argument("--hoop", default=None)
     # rim tracker
-    ap.add_argument("--rim-tracker-kind", default="csrt",
-                    choices=["csrt", "kcf", "static"])
+    ap.add_argument("--rim-tracker-kind", default="static",
+                    choices=["csrt", "kcf", "mil", "static"])
     ap.add_argument("--rim-reseed-every", type=int, default=90)
     # attempt v2
     ap.add_argument("--upward-trigger", type=float, default=-10.0)

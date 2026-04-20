@@ -216,6 +216,53 @@ Then re-run `evaluate_v2.py` on the top-3 v2 sweep configs.
 
 ---
 
+## Rim tracker drift — empirical (new)
+
+Measured directly from `rim_trace.jsonl` on the first five live-matrix
+tasks, same 70 s `1v1-mk.mov` window, static-camera footage:
+
+| Mode | Unique rim centers | x spread (px) | y spread (px) | `source` counts |
+|---|---:|---:|---:|---|
+| `rim=static` | **1** | 0 | 0 | all 2,089 frames `static` |
+| `rim=csrt` (fallback to MIL) | 1,610 | **160** | **158** | 1,807 tracker, 142 reseed, 140 static |
+
+The CSRT-labelled run is actually MIL (stock `opencv-python` doesn't
+ship CSRT). MIL on a ~60×60 px rim region drifts ±80 px within a
+90-frame reseed window — which is wider than the horizontal tolerance
+gate (1.5 × 36 px ≈ 54 px) used by `shot_made_v2._check_made`. Effect
+on makes, same model/clip combo:
+
+| Task | Model | Rim | Attempts | Made | Miss |
+|---|---|---|---:|---:|---:|
+| 0 | yolov8m @ 1280 | static | 11 | 0 | 11 |
+| 1 | yolov8m @ 1280 | csrt→mil | 11 | 0 | 11 |
+| 2 | yolov8x @ 1280 | static | 14 | **2** | 12 |
+| 3 | yolov8x @ 1280 | csrt→mil | 14 | **0** | 14 |
+
+rim=csrt zeroed out yolov8x's makes. On a static-camera clip the
+"tracker" just adds rim noise; the static anchor is correct to the
+pixel.
+
+**Action taken** (committed separately):
+- `RimTracker` default changed from `tracker_kind="csrt"` to
+  `tracker_kind="static"`.
+- `max_jump_px` tightened from 80 → 30 so even when the tracker is
+  enabled, large drifts get overruled by the anchor.
+- `run_demo_v2.py --rim-tracker-kind` default flipped accordingly.
+
+Moving-camera clips (`1v1-ddg.mp4`, `1v1-jason.mp4`) are still the
+motivating case for tracker mode, but their hoop configs are
+placeholders today so we can't validate that claim until someone
+corrects them.
+
+**Unblocking proper CSRT:** `pip install --upgrade
+opencv-contrib-python` (replacing `opencv-python`) ships a real CSRT
+implementation, which for a rigid-and-tiny region like a rim is
+substantially more stable than MIL. The fallback chain in
+`_build_tracker` will pick it up automatically.
+
+---
+
 ## Live matrix (pending)
 
 Slurm job 11930344 (12 tasks, partition `gpu-a6000`) is queued. It

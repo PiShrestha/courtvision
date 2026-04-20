@@ -29,7 +29,7 @@ class ShotPipelineV2:
         anchor: Hoop,
         *,
         # rim tracker
-        tracker_kind: str = "csrt",
+        tracker_kind: str = "static",
         reseed_every: int = 90,
         # attempt tunables
         upward_trigger: float = -10.0,
