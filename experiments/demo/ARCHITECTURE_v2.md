@@ -281,17 +281,56 @@ Two sbatch jobs feed the analysis:
 
 ---
 
+## Custom basketball checkpoint (opt-in)
+
+With user approval on 2026-04-20, the pipeline now accepts a custom
+YOLOv8 checkpoint emitting a `hoop`/`rim` class. When present, the
+per-frame hoop detection becomes the authoritative anchor for the
+current frame — bypassing the CSRT/MIL tracker entirely, so we no
+longer depend on a weak rim locator on moving-camera clips.
+
+Integration points:
+
+| Module | Role |
+|---|---|
+| [`custom_tracker.py`](custom_tracker.py) | YOLO wrapper with alias table that normalises model-emitted class names (`hoop`, `rim`, `basketball-hoop`, `net`, …) to our canonical vocabulary |
+| [`rim_tracker.py`](rim_tracker.py) | new `update(..., detected_bbox=...)` path snaps the rim to a hoop detection (source tag: `"detection"`) |
+| [`shot_pipeline_v2.py`](shot_pipeline_v2.py) | new `update(..., hoop_bbox=...)` threads the detection into the rim tracker |
+| [`run_demo_v2.py`](run_demo_v2.py) | `--custom-model` + `--hoop-conf` flags; tie-breaks multiple hoops per frame by proximity to the JSON anchor |
+| [`download_basketball_model.py`](download_basketball_model.py) | guarded weights fetch (Roboflow SDK with user's API key, HF Hub with pinned revision, or local-copy). Prints sha256 + class-name sanity check before hand-off |
+
+Security posture. `YOLO(path.pt)` deserializes pickle — an arbitrary
+`.pt` from an untrusted source can run code on import. The download
+helper refuses to auto-pick a source: the user must name the provider
+explicitly and supply their own Roboflow API key or an HF revision sha.
+No credentials are committed.
+
+Class-name contract. The canonical vocabulary is
+`{"player", "ball", "hoop", "backboard"}`. The alias table in
+`custom_tracker.DEFAULT_ALIASES` handles common variants; rare spellings
+can be added via the `class_aliases` constructor arg or a command-line
+override later.
+
+Fallback behaviour. Frames without a hoop detection silently fall back
+to the static JSON anchor (or, if `rim_tracker_kind!="static"`, the
+cv2 tracker). This matters because custom detectors skip the rim when
+a player blocks the backboard — keeping the fallback means the pipeline
+keeps producing events through those frames.
+
+---
+
 ## What still isn't addressed
 
 1. **Shot classification** (swish vs rim-bounce-make vs bank) — requires
-   detecting rim/backboard contact. Out of scope without a custom model.
+   detecting rim/backboard contact events on consecutive frames. The
+   custom model surfaces `backboard` into our vocabulary already; the
+   rule on top of it is future work.
 2. **Multi-hoop clips** — rule engine still assumes a single hoop. The
-   three source videos are all half-court 1v1s so this hasn't bitten us.
+   custom-model path tie-breaks by proximity to the JSON anchor so a
+   full-court clip degrades gracefully to the nearer rim, but proper
+   dual-hoop support would need a small rework of `ShotMadeV2`.
 3. **DuoTracker ID drift past 2** — observed empirically in long clips
-   (player IDs escalate to 5, 7, 10 after occlusions). This is a
-   separate v1 bug in `duo_tracker.py`'s `_next_id` handling and was
-   deliberately left out of scope here.
-4. **Custom basketball checkpoint** — the prompt explicitly said no
-   retraining without approval. A Roboflow Universe checkpoint
-   would replace both the hoop auto-detect and the rim tracker with
-   a per-frame supervised signal.
+   (player IDs escalate to 5, 7, 10 after occlusions). Separate v1 bug.
+4. **Training our own basketball checkpoint** — still explicitly out of
+   scope. The custom-model pathway consumes a pretrained weight file
+   the user provides; we never train or fine-tune on HPC.

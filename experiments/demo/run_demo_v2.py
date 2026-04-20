@@ -33,6 +33,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from perception.tracker import Tracker                  # noqa: E402
 
 from _fg_stats import field_goal_stats                   # noqa: E402
+from custom_tracker import CustomTracker                  # noqa: E402
 from duo_tracker import DuoTracker                       # noqa: E402
 from hoop import Hoop, detect_hoop                       # noqa: E402
 from shot_pipeline_v2 import ShotPipelineV2              # noqa: E402
@@ -66,11 +67,32 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--enter-zone-radius-factor", type=float, default=2.0)
     ap.add_argument("--horizontal-pad-factor", type=float, default=1.5)
     ap.add_argument("--min-downward-velocity", type=float, default=1.5)
+    # custom basketball model (optional — routes `hoop` class into the rim
+    # tracker per-frame, bypassing CSRT/MIL drift).
+    ap.add_argument("--custom-model", default=None,
+                    help="path to a YOLOv8 weights file with a hoop/rim class")
+    ap.add_argument("--hoop-conf", type=float, default=0.4,
+                    help="min confidence for hoop detections (default 0.4)")
     # io
     ap.add_argument("--save-video", action="store_true", default=True)
     ap.add_argument("--no-save-video", dest="save_video", action="store_false")
     ap.add_argument("--out", required=True)
     return ap.parse_args()
+
+
+def _best_hoop(hoops: list[dict], anchor_center: tuple[int, int]) -> list[float] | None:
+    """pick the hoop detection closest to the JSON anchor (resolves ties
+    when a full-court clip sees both rims in one frame)."""
+    if not hoops:
+        return None
+    ax, ay = anchor_center
+
+    def _dist(h):
+        x1, y1, x2, y2 = h["bbox"]
+        cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+        return (cx - ax) ** 2 + (cy - ay) ** 2
+
+    return min(hoops, key=_dist)["bbox"]
 
 
 def load_hoop(video_path: str, hoop_path: str | None,
@@ -103,9 +125,23 @@ def main() -> int:
     hoop = load_hoop(args.video, args.hoop, args.start, args.end)
     meta["hoop"] = hoop.to_dict()
 
-    tracker = Tracker(weights_path=args.model,
-                      confidence_threshold=args.confidence,
-                      tracker_config=args.tracker, imgsz=args.imgsz)
+    if args.custom_model:
+        # custom basketball checkpoint with a hoop class routes per-frame
+        # rim detections into the rim tracker; the JSON hoop is kept only
+        # as a fallback for frames where no hoop is detected.
+        tracker = CustomTracker(
+            weights_path=args.custom_model,
+            confidence_threshold=args.confidence,
+            tracker_config=args.tracker, imgsz=args.imgsz,
+            confidence_per_class={"hoop": args.hoop_conf},
+        )
+        meta["custom_model"] = args.custom_model
+        meta["custom_class_map"] = tracker.describe_class_map()
+        print(f"* custom model class map: {meta['custom_class_map']}")
+    else:
+        tracker = Tracker(weights_path=args.model,
+                          confidence_threshold=args.confidence,
+                          tracker_config=args.tracker, imgsz=args.imgsz)
     duo = DuoTracker()
     pipe = ShotPipelineV2(
         anchor=hoop,
@@ -149,10 +185,16 @@ def main() -> int:
             raw = tracker.update(frame, frame_id=frame_id)
             players_only = [t for t in raw if t.get("class_name") == "player"]
             balls_only = [t for t in raw if t.get("class_name") == "ball"]
+            hoops_only = [t for t in raw if t.get("class_name") == "hoop"]
             duo_players = duo.update(frame, players_only, frame_id=frame_id)
             ball_box = balls_only[0]["bbox"] if balls_only else None
+            # highest-confidence hoop wins. typical custom YOLO returns 0-2
+            # hoop detections per frame; we take the one nearest the JSON
+            # anchor to break ties when a full-court clip sees both rims.
+            hoop_box = _best_hoop(hoops_only, anchor_center=hoop.center) if hoops_only else None
 
-            frame_events = pipe.update(frame, frame_id, ball_box, duo_players)
+            frame_events = pipe.update(frame, frame_id, ball_box, duo_players,
+                                          hoop_bbox=hoop_box)
             events.extend(frame_events)
             th = pipe.current_hoop()
             hoop_trace.append({

@@ -208,6 +208,43 @@ for the design.
 
 ---
 
+## Custom basketball checkpoint (optional)
+
+Point the v2 runner at a YOLOv8 `.pt` that includes a `hoop`/`rim`
+class to replace the drift-prone rim tracker with per-frame
+detections:
+
+```bash
+# list the three supported providers
+python experiments/demo/download_basketball_model.py --list
+
+# fetch (you supply trust + credentials, nothing is auto-pulled)
+python experiments/demo/download_basketball_model.py --provider local \
+    --source /path/to/your/verified/best.pt \
+    --target experiments/demo/weights/basketball.pt
+
+# run v2 with the custom model; hoop detections feed the rim tracker
+python experiments/demo/run_demo_v2.py \
+    --video 1v1-mk.mov --start 268 --end 338 \
+    --hoop experiments/demo/hoop_configs/1v1-mk.json \
+    --custom-model experiments/demo/weights/basketball.pt \
+    --hoop-conf 0.4 \
+    --out experiments/demo/outputs_v2_live/mk_custom
+```
+
+Canonical class names the pipeline normalises to via
+[custom_tracker.py](experiments/demo/custom_tracker.py):
+`player`, `ball`, `hoop`, `backboard`. Aliases cover common variants
+(`person`, `basketball`, `rim`, `basketball-hoop`, `net`, …). Add more
+via the `class_aliases` kwarg or a future CLI flag.
+
+Security note: `YOLO(path.pt)` deserializes pickle. Only load weights
+you've verified — either from your own training run, a pinned
+HuggingFace revision, or a Roboflow export tied to your API key. The
+helper prints a sha256 hash after download for future integrity checks.
+
+---
+
 ## Slurm batch submission (v2)
 
 ```bash

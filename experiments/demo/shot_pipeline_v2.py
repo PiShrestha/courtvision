@@ -75,10 +75,17 @@ class ShotPipelineV2:
         frame_id: int,
         ball_bbox: list[float] | None,
         player_tracks: list[dict],
+        hoop_bbox: list[float] | None = None,
     ) -> list[dict[str, Any]]:
+        """step one frame. hoop_bbox (when provided by a custom YOLO model)
+        snaps the RimTracker to a per-frame detection, bypassing CSRT/MIL.
+        """
         # step the rim tracker. if no frame, reuse the last (static) hoop.
         if frame is not None:
-            self._last_hoop = self.rim.update(frame, frame_id)
+            self._last_hoop = self.rim.update(frame, frame_id, detected_bbox=hoop_bbox)
+        elif hoop_bbox is not None:
+            # offline mode with a recorded hoop detection (rare).
+            self._last_hoop = self.rim._hoop_from_detection(hoop_bbox)
         # step attempt detector — emits possession + shot_attempt.
         attempt_events = self.att.update(frame_id, ball_bbox, player_tracks,
                                           hoop=self._last_hoop)

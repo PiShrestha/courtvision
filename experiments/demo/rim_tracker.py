@@ -95,8 +95,24 @@ class RimTracker:
         self._last_center: tuple[int, int] = anchor.center
         self._last_radius: int = anchor.radius
 
-    def update(self, frame: np.ndarray, frame_id: int) -> TrackedHoop:
-        """return the best rim position for this frame."""
+    def update(
+        self,
+        frame: np.ndarray,
+        frame_id: int,
+        detected_bbox: list[float] | None = None,
+    ) -> TrackedHoop:
+        """return the best rim position for this frame.
+
+        precedence:
+          1. `detected_bbox` from a per-frame hoop detector (most reliable).
+             when given, the CSRT/MIL tracker is bypassed entirely and the
+             anchor is snapped to the detection.
+          2. the cv2 tracker if `kind` is not "static".
+          3. the static JSON anchor as a fallback.
+        """
+        if detected_bbox is not None:
+            return self._hoop_from_detection(detected_bbox)
+
         # pure static mode: every frame resolves to the anchor, no tracker work.
         if self.kind == "static":
             return self._static_hoop()
@@ -140,6 +156,21 @@ class RimTracker:
         self._last_radius = self.anchor.radius
         return TrackedHoop(center=self.anchor.center,
                            radius=self.anchor.radius, source="static")
+
+    def _hoop_from_detection(self, bbox: list[float]) -> TrackedHoop:
+        """snap the rim to a per-frame hoop bbox from a custom YOLO model."""
+        x1, y1, x2, y2 = bbox
+        cx = int((x1 + x2) / 2 + 0.5)
+        cy = int((y1 + y2) / 2 + 0.5)
+        # the rim radius is approximately half the bbox width for a hoop seen
+        # head-on. we take half the min side to avoid distortion when the
+        # detector box covers backboard + rim together.
+        r = max(6, int(min(x2 - x1, y2 - y1) / 2 + 0.5))
+        self._last_center = (cx, cy)
+        self._last_radius = r
+        # invalidate the cv2 tracker so we reseed next time it's needed.
+        self._tracker = None
+        return TrackedHoop(center=(cx, cy), radius=r, source="detection")
 
     # ---- internals ----------------------------------------------------------
 
