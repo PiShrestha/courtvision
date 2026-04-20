@@ -97,6 +97,19 @@ courtvision/
 │   └── compare_sweep.sh          # side-by-side summary across sweep outputs
 │
 ├── presentation/                 # slide deck + matplotlib charts
+├── experiments/demo/             # v2 pipeline — shot_made, rim tracker, FG stats
+│   ├── run_demo.py               # v1 end-to-end runner (ball-disc rule)
+│   ├── run_demo_v2.py            # v2 runner (rim-plane crossing + occlusion)
+│   ├── shot_detector.py          # v1 shot rule
+│   ├── shot_made_v2.py           # v2 state machine for made detection
+│   ├── shot_attempt_v2.py        # v2 multi-predicate attempt rule
+│   ├── rim_tracker.py            # hybrid static-anchor + cv2 tracker
+│   ├── duo_tracker.py            # 2-slot persistent player identity
+│   ├── evaluate_v2.py            # precision/recall/F1 vs GT csv
+│   ├── offline_sweep_v2.py       # CPU param sweep over existing tracks
+│   ├── aggregate_v2.py           # CSV + summary.md + charts
+│   ├── ARCHITECTURE_v2.md        # v2 design doc
+│   └── FINDINGS_v2.md            # v2 sweep results
 ├── requirements.txt
 ├── README.md
 ├── ARCHITECTURE.md               # stage-by-stage design
@@ -151,6 +164,63 @@ A VLM never looks at raw frames in this design. It sees a pre-validated event st
 | DINOv2 / SAM 2 re-identification | deferred past midterm (explicit in proposal) | — |
 
 Final-stage upgrades (per-frame court keypoint detection for moving-camera homography, custom basketball YOLO checkpoint with a hoop class, Llama 3.2-Vision) are listed in [CONSTRAINTS.md](CONSTRAINTS.md) § "Future work".
+
+---
+
+## Shot detection v2 (experiments/demo)
+
+A drop-in replacement for the main pipeline's shot rule lives under
+[`experiments/demo/`](experiments/demo/). It addresses v1's three known failure
+modes — dribble-triggered false-positive attempts, missed makes when the
+ball is net-occluded for 5–15 frames, and static-hoop drift on
+moving-camera clips — without retraining the detector.
+
+```bash
+# run v2 end-to-end on a 70 s window (GPU)
+.venv/bin/python experiments/demo/run_demo_v2.py \
+    --video 1v1-mk.mov --start 268 --end 338 \
+    --hoop experiments/demo/hoop_configs/1v1-mk.json \
+    --model yolov8l.pt --imgsz 640 \
+    --out experiments/demo/outputs_v2_live/my_run
+
+# offline CPU param sweep over existing tracks.jsonl files (fast iteration)
+.venv/bin/python experiments/demo/offline_sweep_v2.py \
+    --tracks-glob 'experiments/demo/outputs/run*.tracks.jsonl' \
+    --matrix experiments/demo/matrix_v2_offline.csv \
+    --outdir experiments/demo/outputs_v2
+
+# aggregate N runs into csv + markdown + charts
+.venv/bin/python experiments/demo/aggregate_v2.py \
+    --outdir experiments/demo/analysis_v2
+
+# evaluate a run against ground truth
+.venv/bin/python experiments/demo/evaluate_v2.py \
+    --pred experiments/demo/outputs_v2_live/my_run.events.json \
+    --gt experiments/demo/gt/1v1-mk_t268-338.csv \
+    --tolerance 15
+```
+
+On the latest sweep (4,860 replays across 15 tunable rows),
+v2 cut `shot_attempt` FPs **−65%** and lifted `shot_made` recall
+**+54%** vs v1. See [`experiments/demo/FINDINGS_v2.md`](experiments/demo/FINDINGS_v2.md)
+for the numbers and [`experiments/demo/ARCHITECTURE_v2.md`](experiments/demo/ARCHITECTURE_v2.md)
+for the design.
+
+---
+
+## Slurm batch submission (v2)
+
+```bash
+# offline CPU sweep (fast, ~2 min for 324 tracks × 15 configs)
+sbatch experiments/demo/offline_sweep_v2.sbatch
+
+# live GPU matrix (12 tasks: 3 videos × rim-tracker variants)
+sbatch --array=0-11 experiments/demo/run_matrix_v2_live.sbatch
+
+# aggregator, runs afterany the above finish
+sbatch --dependency=afterany:<offline_id>:<live_id> \
+       experiments/demo/aggregate_v2.sbatch
+```
 
 ---
 

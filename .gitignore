@@ -1,6 +1,9 @@
 # AI context file (local-only, never push to GitHub)
 *.local.*
 
+# Claude Code agent config / cache (local-only)
+.claude/
+
 # Video / data assets (too large for Git)
 data/
 videos/
@@ -14,6 +17,26 @@ outputs/
 weights/
 *.pt
 *.onnx
+
+# Slurm log files (stdout/stderr for every task, can grow to thousands)
+logs/
+*.out
+*.err
+
+# Experiment artifacts — source code tracked, generated outputs ignored
+experiments/demo/outputs/
+experiments/demo/outputs_v2/
+experiments/demo/outputs_v2_live/
+experiments/demo/outputs_v2_smoke/
+experiments/demo/analysis/
+experiments/demo/analysis_v2/
+experiments/demo/for_download/
+experiments/demo/labeled_compressed/
+*.tracks.jsonl
+*.events.json
+*.events_v2.json
+*.meta_v2.json
+*.rim_trace.jsonl
 
 # OS junk
 .DS_Store
