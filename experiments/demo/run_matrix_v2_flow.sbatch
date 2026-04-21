@@ -16,7 +16,7 @@ set -euo pipefail
 REPO_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 cd "${REPO_ROOT}"
 
-MATRIX="${MATRIX:-experiments/demo/matrix_v2_new_videos_flow.csv}"
+MATRIX="${MATRIX:-experiments/demo/matrix_v2_50clips_flow.csv}"
 TASK_ID="${SLURM_ARRAY_TASK_ID}"
 line_no=$((TASK_ID + 2))
 row=$(sed -n "${line_no}p" "${MATRIX}" | tr -d '\r')
