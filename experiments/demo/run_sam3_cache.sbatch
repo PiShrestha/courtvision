@@ -24,6 +24,7 @@
 # with ffmpeg below so memory scales with the window, not the full source.
 
 set -euo pipefail
+umask 0022         # keep outputs group+other readable
 REPO_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 cd "${REPO_ROOT}"
 source .venv/bin/activate
