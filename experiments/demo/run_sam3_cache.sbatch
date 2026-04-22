@@ -41,13 +41,12 @@ stem="$(basename "${VIDEO}" | cut -d. -f1)"
 out_dir="experiments/demo/sam3_cache/${CHECKPOINT}"
 mkdir -p "${out_dir}" logs "$HOME/.triton/cache"
 
-# triton JIT-compiles tiny cuda_utils.c per process; the system's
-# /usr/include/python3.11/ directory lacks Python.h, so the compile fails.
-# prepend a known-good Python.h location (miniforge ships one) and pin
-# the triton cache so the first task compiles once and all subsequent
-# tasks in the array reuse the .so.
+# triton JIT needs Python.h; miniforge provides it. cache compiled
+# kernels so tasks after the first reuse the .so.
 export CPATH="/apps/software/standard/core/miniforge/24.3.0-py3.11/include/python3.11:${CPATH:-}"
 export TRITON_CACHE_DIR="$HOME/.triton/cache"
+# reduce vram fragmentation for sam 3.1's multi-object tracker.
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 out_path="${out_dir}/run${RUN_ID}_${stem}_t${START%.*}-${END%.*}.sam3.jsonl"
 
 # pre-extract the window to a temp mp4 so SAM 3 doesn't load the full source.
