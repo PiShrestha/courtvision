@@ -64,8 +64,14 @@ echo "  node   : $(hostname)"
 echo "=================================================================="
 
 module load ffmpeg 2>/dev/null || true
+# re-encode to 30 fps. SAM 3 preloads every frame into host RAM — at 60 fps
+# (our nasir/roy clips) a 70s window is ~4200 frames * 6MB = 26GB just for
+# raw decoded pixels, which plus activations + overhead exceeds 48GB.
+# 30 fps is plenty for shot detection (nothing critical happens sub-33ms)
+# and halves host memory. ultrafast preset keeps the re-encode fast.
 ffmpeg -nostdin -y -ss "${START}" -i "${VIDEO}" -t "${dur}" \
-    -c copy "${clip_tmp}" 2>&1 | tail -3
+    -r 30 -c:v libx264 -preset ultrafast -crf 23 -an \
+    "${clip_tmp}" 2>&1 | tail -3
 
 python - <<PY
 import sys, json, time
@@ -82,13 +88,17 @@ raw_signals = tracker.run("${clip_tmp}", start_s=0.0, end_s=None)
 
 import cv2
 cap = cv2.VideoCapture("${VIDEO}")
-fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
+source_fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
 cap.release()
-offset = int(round(float("${START}") * fps))
+CLIP_FPS = 30.0   # must match the ffmpeg -r value above
+offset = int(round(float("${START}") * source_fps))
 
-# shift frame ids to absolute frame indices in the source video.
+# SAM 3's frame_id is in clip-fps units. downstream reads the ORIGINAL
+# video at source_fps, so we remap each clip frame to the nearest
+# source frame: source_frame = offset + round(clip_frame * source_fps / CLIP_FPS).
+ratio = source_fps / CLIP_FPS
 for s in raw_signals:
-    s.frame_id = int(s.frame_id) + offset
+    s.frame_id = offset + int(round(int(s.frame_id) * ratio))
 
 # write the shifted signals.
 from pathlib import Path
