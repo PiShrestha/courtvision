@@ -40,6 +40,10 @@ run_tag="v3abl_${VARIANT}_run${RUN_ID}_${stem}_t${START%.*}-${END%.*}"
 OUT_PREFIX="experiments/demo/outputs_v3_ablation/${VARIANT}/${run_tag}_${SLURM_ARRAY_JOB_ID}_${TASK_ID}"
 mkdir -p logs "$(dirname "${OUT_PREFIX}")"
 
+mkdir -p "$HOME/.triton/cache"
+# make sure triton can find Python.h during its JIT compiles.
+export CPATH="/apps/software/standard/core/miniforge/24.3.0-py3.11/include/python3.11:${CPATH:-}"
+export TRITON_CACHE_DIR="$HOME/.triton/cache"
 source .venv/bin/activate
 echo "=================================================================="
 echo "v3 ablation task ${TASK_ID}  variant=${VARIANT}  clip=${stem} t${START}-${END}"
