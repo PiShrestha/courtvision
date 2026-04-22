@@ -13,10 +13,13 @@ import numpy as np
 from fusion import PerceptionSignal
 
 
-DEFAULT_CONCEPTS = {
-    "rim": "basketball rim",
-    "ball": "basketball",
-    "player": "basketball player",
+# one canonical target -> ordered list of phrases to try. the first phrase
+# that returns non-empty masks wins. empirically "basketball rim" alone
+# returns zero on all our clips; "basketball hoop" is the reliable trigger.
+DEFAULT_CONCEPTS: dict[str, list[str]] = {
+    "rim":    ["basketball hoop", "hoop", "orange rim", "basketball rim"],
+    "ball":   ["basketball", "orange basketball ball"],
+    "player": ["basketball player", "person"],
 }
 
 DEFAULT_CHECKPOINT = "sam3.1"
@@ -26,8 +29,9 @@ DEFAULT_CHECKPOINT = "sam3.1"
 class Sam3Config:
     """config for one sam 3 offline pass over a clip."""
     checkpoint: str = DEFAULT_CHECKPOINT        # "sam3" | "sam3.1"
-    concepts: dict[str, str] = field(
-        default_factory=lambda: dict(DEFAULT_CONCEPTS)
+    # concept -> str (legacy single-phrase) OR list[str] (try in order).
+    concepts: dict[str, str | list[str]] = field(
+        default_factory=lambda: {k: list(v) for k, v in DEFAULT_CONCEPTS.items()}
     )
     prompt_frame: int = 0
     min_score: float = 0.2
@@ -64,15 +68,24 @@ class Sam3Tracker:
         self._ensure_predictor()
         session = self._start_session(video_path, start_s, end_s)
 
-        # prompt all concepts at the seed frame.
+        # prompt each concept with its ordered list of phrases; stop at the
+        # first phrase that returns non-empty object ids.
         concept_to_id: dict[str, list[int]] = {}
-        for canonical, phrase in self.config.concepts.items():
-            ids = self._add_text_prompt(
-                session_id=session["session_id"],
-                frame_index=self.config.prompt_frame,
-                text=phrase,
-            )
+        chosen_phrase: dict[str, str] = {}
+        for canonical, phrases in self.config.concepts.items():
+            tries = [phrases] if isinstance(phrases, str) else list(phrases)
+            ids: list[int] = []
+            for p in tries:
+                ids = self._add_text_prompt(
+                    session_id=session["session_id"],
+                    frame_index=self.config.prompt_frame,
+                    text=p,
+                )
+                if ids:
+                    chosen_phrase[canonical] = p
+                    break
             concept_to_id[canonical] = ids
+        self._chosen_phrases = chosen_phrase
 
         # propagate forward; one signal per (frame, instance) above threshold.
         signals: list[PerceptionSignal] = []
@@ -96,7 +109,7 @@ class Sam3Tracker:
                     bbox=[float(x1), float(y1), float(x2), float(y2)],
                     track_id=int(inst_id),
                     extras={"mask_area": int(mask.sum()),
-                            "concept_phrase": self.config.concepts[canonical]},
+                            "concept_phrase": chosen_phrase.get(canonical, "?")},
                 ))
         return signals
 

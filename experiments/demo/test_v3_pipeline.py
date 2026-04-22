@@ -211,8 +211,9 @@ class _MockSam3Predictor:
 
 def test_sam3_tracker_with_mock():
     from sam3_tracker import Sam3Tracker, Sam3Config
+    # use both str (legacy) and list form to exercise both code paths.
     t = Sam3Tracker(Sam3Config(
-        concepts={"rim": "rim", "ball": "ball", "player": "player"},
+        concepts={"rim": "rim", "ball": ["ball"], "player": ["player"]},
     ))
     t._predictor = _MockSam3Predictor()
     signals = t.run("/ignored/path.mp4", start_s=0.0)
@@ -225,6 +226,37 @@ def test_sam3_tracker_with_mock():
         assert s.bbox[2] == 119.0 and s.bbox[3] == 59.0
     # concepts correctly routed.
     assert {s.target for s in signals} == {"rim", "ball", "player"}
+    return True
+
+
+def test_sam3_multi_prompt_fallback():
+    # simulate first phrase returning no ids, second phrase succeeding.
+    from sam3_tracker import Sam3Tracker, Sam3Config
+
+    class _PickySam3(_MockSam3Predictor):
+        # only accept the second phrase in the list.
+        def handle_request(self, request):
+            if request["type"] == "add_prompt":
+                text = request["text"]
+                if text == "basketball rim":          # first phrase: reject
+                    return {"frame_index": 0,
+                            "outputs": {"out_obj_ids": np.array([]),
+                                         "out_binary_masks": np.array([]),
+                                         "output_probs": np.array([])}}
+            return super().handle_request(request)
+
+    cfg = Sam3Config(concepts={
+        "rim": ["basketball rim", "basketball hoop"],   # first fails, second works
+        "ball": "basketball",
+    })
+    t = Sam3Tracker(cfg)
+    t._predictor = _PickySam3()
+    signals = t.run("/ignored.mp4", start_s=0.0)
+    assert t._chosen_phrases["rim"] == "basketball hoop", (
+        f"fallback should pick 'basketball hoop', got {t._chosen_phrases}")
+    rim_sigs = [s for s in signals if s.target == "rim"]
+    assert len(rim_sigs) > 0, "expected rim signals from fallback phrase"
+    assert rim_sigs[0].extras["concept_phrase"] == "basketball hoop"
     return True
 
 
@@ -451,6 +483,7 @@ TESTS = [
     ("pose shooting detected",    test_pose_derive_shooting),
     ("pose dribble rejected",     test_pose_derive_dribble),
     ("sam3 mock end-to-end",      test_sam3_tracker_with_mock),
+    ("sam3 multi-prompt fallback", test_sam3_multi_prompt_fallback),
     ("sam3 jsonl roundtrip",      test_sam3_jsonl_roundtrip),
     ("v3 pipeline update",        test_v3_pipeline_construction_and_update),
     ("v3 loads sam3 cache",       test_v3_loads_sam3_cache),
