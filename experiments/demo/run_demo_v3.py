@@ -62,6 +62,10 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--pose-score-threshold", type=float, default=0.5)
     ap.add_argument("--sam3-cache", default=None,
                     help="path to a pre-built sam3 jsonl cache for this clip")
+    ap.add_argument("--strict-consensus", action="store_true",
+                    help="require >=2 sources and conf>=strict_min for fused rim")
+    ap.add_argument("--strict-min-confidence", type=float, default=0.8)
+    ap.add_argument("--strict-min-sources", type=int, default=2)
     ap.add_argument("--save-video", action="store_true", default=True)
     ap.add_argument("--no-save-video", dest="save_video", action="store_false")
     ap.add_argument("--out", required=True)
@@ -148,6 +152,9 @@ def main() -> int:
         use_pose=args.use_pose,
         sam3_cache_path=args.sam3_cache,
         pose_score_threshold=args.pose_score_threshold,
+        strict_consensus=args.strict_consensus,
+        strict_min_confidence=args.strict_min_confidence,
+        strict_min_sources=args.strict_min_sources,
     )
     pipe = ShotPipelineV3(anchor=hoop, config=cfg)
 

@@ -46,6 +46,10 @@ class V3Config:
     # fusion knobs
     min_signal_conf: float = 0.15
     center_agreement_px: float = 40.0
+    # strict consensus: require >=2 sources agreeing for fused rim to override.
+    strict_consensus: bool = False
+    strict_min_confidence: float = 0.8
+    strict_min_sources: int = 2
     # shooting-pose predicate
     pose_window_frames: int = 10
     pose_score_threshold: float = 0.5
@@ -176,8 +180,16 @@ class ShotPipelineV3:
         fused_rim = self.fuser.fuse_rim(rim_signals)
         fused_ball = self.fuser.fuse_ball(ball_signals)
 
-        # adopt fused rim when it's more confident than the handcrafted one.
-        if fused_rim is not None and fused_rim.confidence > 0.5:
+        # adopt fused rim when confident; under strict_consensus require
+        # multiple sources AND a higher confidence floor.
+        rim_ok = False
+        if fused_rim is not None:
+            if self.config.strict_consensus:
+                rim_ok = (fused_rim.confidence >= self.config.strict_min_confidence
+                          and fused_rim.signal_count >= self.config.strict_min_sources)
+            else:
+                rim_ok = fused_rim.confidence > 0.5
+        if rim_ok:
             self._last_hoop = TrackedHoop(
                 center=(int(fused_rim.center[0]), int(fused_rim.center[1])),
                 radius=fused_rim.radius or self._last_hoop.radius,

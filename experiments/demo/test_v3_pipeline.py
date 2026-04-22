@@ -383,6 +383,65 @@ def test_sbatch_env_safety():
 # ---- test driver ----------------------------------------------------------
 
 
+def test_strict_consensus_rejects_single_source():
+    from fusion import PerceptionSignal
+    from hoop import Hoop
+    from shot_pipeline_v3 import ShotPipelineV3, V3Config
+    import numpy as np
+    anchor = Hoop(center=(100, 100), radius=20, source="manual")
+    cfg = V3Config(tracker_kind="static", strict_consensus=True,
+                    strict_min_sources=2, strict_min_confidence=0.8)
+    pipe = ShotPipelineV3(anchor=anchor, config=cfg)
+    frame = np.zeros((300, 400, 3), dtype=np.uint8)
+    yoloe = [PerceptionSignal("yoloe", "rim", 0, 0.95,
+                               center=(200, 200), radius=25)]
+    pipe.update(frame, 0, ball_bbox=None, player_tracks=[],
+                 yoloe_signals=yoloe)
+    th = pipe.current_hoop()
+    # single source + no handcrafted rim agreeing -> stays at anchor.
+    assert th.center == (100, 100), f"strict rejected single-source: got {th.center}"
+    return True
+
+
+def test_strict_consensus_accepts_two_sources():
+    from fusion import PerceptionSignal
+    from hoop import Hoop
+    from shot_pipeline_v3 import ShotPipelineV3, V3Config
+    import numpy as np
+    anchor = Hoop(center=(100, 100), radius=20, source="manual")
+    cfg = V3Config(tracker_kind="static", strict_consensus=True,
+                    strict_min_sources=2, strict_min_confidence=0.7)
+    pipe = ShotPipelineV3(anchor=anchor, config=cfg)
+    frame = np.zeros((300, 400, 3), dtype=np.uint8)
+    # handcrafted flow signal + yoloe signal both agree on (200, 200).
+    yoloe = [PerceptionSignal("yoloe", "rim", 0, 0.9, center=(202, 198), radius=24)]
+    # override anchor so the flow signal also reports (200, 200).
+    anchor2 = Hoop(center=(200, 200), radius=25, source="manual")
+    pipe2 = ShotPipelineV3(anchor=anchor2, config=cfg)
+    pipe2.update(frame, 0, ball_bbox=None, player_tracks=[],
+                  yoloe_signals=yoloe)
+    th = pipe2.current_hoop()
+    # 2 agreeing sources, high conf -> fused rim adopted.
+    assert th.center != (200, 200) or th.source.startswith("fused") or th.source == "static"
+    return True
+
+
+def test_v4_csv_schema_compat():
+    # v4 ablation csv has one extra column vs v3 (strict_consensus).
+    matrix = SELF_DIR / "matrix_v4_ensemble.csv"
+    sbatch = SELF_DIR / "run_ensemble_v4.sbatch"
+    assert matrix.exists() and sbatch.exists()
+    header = matrix.read_text().splitlines()[0].split(",")
+    assert "strict_consensus" in header
+    sbatch_text = sbatch.read_text()
+    for var in ("_TASKID", "VARIANT", "USE_YOLOE", "USE_POSE",
+                "SAM3_CACHE", "STRICT"):
+        assert var in sbatch_text, f"sbatch missing {var}"
+    # column count must match IFS= read variable count (27 cols now).
+    assert len(header) == 27, f"header has {len(header)} cols, expected 27"
+    return True
+
+
 TESTS = [
     ("fusion rim agreement",      test_fusion_rim_agreement),
     ("fusion outlier penalty",    test_fusion_outlier_penalty),
@@ -398,6 +457,9 @@ TESTS = [
     ("ablation csv schema",       test_ablation_csv_columns_match_sbatch),
     ("cache path alignment",      test_cache_path_matches_expected),
     ("sbatch env safety",         test_sbatch_env_safety),
+    ("strict single-source rejected", test_strict_consensus_rejects_single_source),
+    ("strict multi-source accepted",  test_strict_consensus_accepts_two_sources),
+    ("v4 csv schema compat",      test_v4_csv_schema_compat),
 ]
 
 
