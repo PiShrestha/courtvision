@@ -17,6 +17,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --partition=gpu-a6000
 #SBATCH --gres=gpu:1
+#SBATCH --exclude=udc-an33-[37-38]   # v100 nodes; torch 2.11+cu130 lacks sm_70 kernels
 #SBATCH --account=cs6770_sp26
 # memory bumped 32G -> 48G after first attempt OOM'd: SAM 3 session API
 # does not scope to time windows, so it preloads the entire 16 min video

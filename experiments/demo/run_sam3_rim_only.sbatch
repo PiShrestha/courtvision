@@ -13,6 +13,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
+#SBATCH --exclude=udc-an33-[37-38]   # v100 nodes; torch 2.11+cu130 lacks sm_70 kernels
 #SBATCH --account=nssac_students
 
 set -euo pipefail
