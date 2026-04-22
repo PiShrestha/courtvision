@@ -183,21 +183,32 @@ class Sam3Tracker:
 
     def _start_session(self, video_path: str, start_s: float,
                         end_s: float | None):
-        request = {
-            "type": "start_session",
-            "resource_path": video_path,
-        }
-        if start_s > 0 or end_s is not None:
-            # SAM 3's session API supports a "segment" kwarg in some
-            # versions and explicit frame indices in others. pass both
-            # forms so this is robust to minor API drift.
-            request["start_seconds"] = float(start_s)
-            if end_s is not None:
-                request["end_seconds"] = float(end_s)
-        return self._predictor.handle_request(request=request)
+        """start a video session. real SAM 3 API does NOT accept
+        start_seconds/end_seconds — callers must pre-cut the clip first
+        (see run_sam3_cache.sbatch for the ffmpeg path).
+
+        `offload_video_to_cpu=True` keeps decoded frames in CPU memory
+        (vs GPU memory); combined with the 30fps re-encode, this is what
+        makes the cache fit in 48GB host RAM.
+        """
+        return self._predictor.handle_request(
+            request={
+                "type": "start_session",
+                "resource_path": video_path,
+                "offload_video_to_cpu": True,
+            },
+        )
 
     def _add_text_prompt(self, session_id: str, frame_index: int,
                           text: str) -> list[int]:
+        """add a text prompt on a specific frame; return the object id(s)
+        the predictor assigned to this concept.
+
+        real response shape: {"frame_index": int, "outputs": {
+            "out_obj_ids": array, "out_binary_masks": array, "output_probs": array
+        }}. one prompt can create multiple obj ids (e.g. "basketball players"
+        can resolve to two separate tracked instances).
+        """
         response = self._predictor.handle_request(
             request={
                 "type": "add_prompt",
@@ -206,28 +217,38 @@ class Sam3Tracker:
                 "text": text,
             },
         )
-        # the response shape varies by SAM 3 release. we look for either
-        # a direct instance list or the top-level "outputs" wrapper.
-        outputs = response.get("outputs") or response
-        instances = outputs.get("instances") or outputs.get("object_ids") or []
-        return [int(x.get("id") if isinstance(x, dict) else x) for x in instances]
+        outputs = response.get("outputs") or {}
+        obj_ids = _safe_list(outputs.get("out_obj_ids"))
+        return [int(x) for x in obj_ids]
 
     def _propagate(self, session_id: str):
-        """generator yielding {"frame_idx": int, "instances": [(id, mask, score)]}."""
-        response = self._predictor.handle_request(
-            request={"type": "propagate_in_video", "session_id": session_id},
-        )
-        # response typically streams per-frame; we iterate its generator,
-        # falling back to a list shape for versions that batch.
-        per_frame = response.get("per_frame") or response.get("outputs") or response
-        if isinstance(per_frame, dict):
-            # single-frame sanity mode; iterate keys sorted by frame_idx.
-            items = sorted(per_frame.items(), key=lambda kv: int(kv[0]))
-            for frame_idx, payload in items:
-                yield _normalise_frame(int(frame_idx), payload)
-        else:
-            for frame in per_frame:
-                yield _normalise_frame(int(frame.get("frame_idx", 0)), frame)
+        """propagation is a STREAM request (yields per-frame), not a single
+        handle_request. each response has shape:
+            {"frame_index": int, "outputs": {
+                "out_obj_ids": [obj_id, ...],
+                "out_binary_masks": [H x W bool, ...],
+                "output_probs": [float, ...]
+            }}
+        we convert to the caller's expected (id, mask, score) triples.
+        """
+        for response in self._predictor.handle_stream_request(
+            request={
+                "type": "propagate_in_video",
+                "session_id": session_id,
+                "propagation_direction": "forward",
+            },
+        ):
+            frame_idx = int(response.get("frame_index", 0))
+            out = response.get("outputs") or {}
+            obj_ids = _safe_list(out.get("out_obj_ids"))
+            masks = list(out.get("out_binary_masks") or [])
+            probs_raw = out.get("output_probs")
+            probs = _safe_list(probs_raw) if probs_raw is not None \
+                    else [1.0] * len(obj_ids)
+            instances = []
+            for oid, mask, prob in zip(obj_ids, masks, probs):
+                instances.append((int(oid), mask, float(prob)))
+            yield {"frame_idx": frame_idx, "instances": instances}
 
     def _canonical_for(self, concept_to_id: dict[str, list[int]],
                         inst_id: int) -> str | None:
@@ -241,6 +262,12 @@ class Sam3Tracker:
 
 
 def _mask_to_bbox(mask) -> tuple[float, float, float, float] | None:
+    """mask -> axis-aligned bbox. handles torch tensor (incl. CUDA), numpy
+    array, or list input. SAM 3 returns torch tensors so we always do a
+    safe conversion to numpy on CPU first.
+    """
+    if hasattr(mask, "detach") and hasattr(mask, "cpu"):
+        mask = mask.detach().cpu().numpy()
     arr = np.asarray(mask)
     if arr.ndim == 3:
         arr = arr[0]
@@ -248,6 +275,15 @@ def _mask_to_bbox(mask) -> tuple[float, float, float, float] | None:
     if xs.size == 0:
         return None
     return float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max())
+
+
+def _safe_list(obj):
+    """torch tensor / numpy array / list -> python list."""
+    if obj is None:
+        return []
+    if hasattr(obj, "tolist"):
+        return obj.tolist()
+    return list(obj)
 
 
 def _normalise_frame(frame_idx: int, payload) -> dict:
