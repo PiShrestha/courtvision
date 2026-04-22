@@ -1,16 +1,4 @@
-"""end-to-end v3 runner: v2 rules + optional YOLOE / RTMPose / SAM 3 fusion.
-
-same CLI surface as run_demo_v2.py plus three backend toggles:
-  --use-yoloe                 run YOLOE open-vocab detector per frame
-  --use-pose                  run RTMPose per-frame, add shooting-pose
-                               predicate to shot_attempt
-  --sam3-cache PATH           replay pre-computed SAM 3 signals from JSONL
-
-emits the same artefacts as v2 (mp4, events.json, meta.json, tracks.jsonl,
-rim_trace.jsonl). new fields in meta.json:
-  "pipeline": "v3", "backends": {"yoloe": bool, "pose": bool, "sam3": path|null},
-  "backend_timings": {"yoloe_seconds": float, "pose_seconds": float}.
-"""
+"""v3 cli runner: v2 rules + optional yoloe / rtmpose / sam 3 fusion."""
 
 from __future__ import annotations
 
@@ -73,7 +61,7 @@ def parse_args() -> argparse.Namespace:
                     choices=["lightweight", "balanced", "performance"])
     ap.add_argument("--pose-score-threshold", type=float, default=0.5)
     ap.add_argument("--sam3-cache", default=None,
-                    help="path to a sam3_tracker JSONL cache for this clip")
+                    help="path to a pre-built sam3 jsonl cache for this clip")
     ap.add_argument("--save-video", action="store_true", default=True)
     ap.add_argument("--no-save-video", dest="save_video", action="store_false")
     ap.add_argument("--out", required=True)
@@ -92,7 +80,7 @@ def load_hoop(video_path: str, hoop_path: str | None,
 
 
 def _best_hoop_bbox(yoloe_rim_signals, anchor_center) -> list[float] | None:
-    """pick the yoloe rim detection nearest the JSON anchor."""
+    # yoloe rim detection nearest the json anchor.
     if not yoloe_rim_signals:
         return None
     ax, ay = anchor_center
@@ -107,7 +95,7 @@ def main() -> int:
     args = parse_args()
     out_prefix = Path(args.out); out_prefix.parent.mkdir(parents=True, exist_ok=True)
 
-    # probe fps for rule scaling.
+    # probe source fps to scale frame-based rule windows.
     _probe = cv2.VideoCapture(args.video)
     fps = float(_probe.get(cv2.CAP_PROP_FPS) or 30.0)
     _probe.release()

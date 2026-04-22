@@ -1,31 +1,4 @@
-"""multi-detector fusion layer with confidence-weighted consensus.
-
-every detector in the pipeline produces PerceptionSignal objects. the
-ConsensusFuser combines signals for the same target (rim, ball, each
-player) into a single FusedResult whose confidence reflects the
-agreement between detectors.
-
-design principles:
-
-1. additive: detectors that aren't enabled simply don't produce
-   signals; the fuser returns the single available signal unchanged.
-2. source-agnostic: the fuser doesn't care whether signals come from
-   COCO YOLO, YOLOE, SAM 3, RTMPose, or a handcrafted tracker.
-3. cheap when sparse: O(N*M) for N signals per target and M targets,
-   which is small in practice (~3-4 detectors, ~5 targets per frame).
-
-cascade semantics:
-- for single-position targets (e.g. the rim), the fuser returns the
-  median centroid of all signals above a minimum confidence threshold,
-  weighted by signal confidence. disagreement across signals *drops*
-  the fused confidence.
-- for bbox targets (e.g. the ball), signals are IoU-merged: pairs with
-  IoU > threshold are averaged, non-matching pairs are kept as
-  separate hypotheses.
-- each FusedResult carries a `contributing_sources` list so downstream
-  rules can gate on specific combinations ("accept only if YOLOE and
-  SAM 3 both saw it").
-"""
+"""confidence-weighted fusion of detector signals per target."""
 
 from __future__ import annotations
 
@@ -40,24 +13,7 @@ Target = Literal["rim", "ball", "player"]
 
 @dataclass
 class PerceptionSignal:
-    """one detector's output for one target on one frame.
-
-    fields:
-      source:      free-form tag: "coco_yolo", "yoloe", "sam3", "flow",
-                   "static_anchor", "rtmpose", etc.
-      target:     "rim" | "ball" | "player"
-      frame_id:   integer
-      confidence: 0-1; detector-reported or rule-of-thumb
-      bbox:       optional [x1, y1, x2, y2]. the fuser derives center
-                   and area from this when present.
-      center:     optional (x, y). takes precedence over bbox center
-                   when both given (e.g. tracker outputs a point).
-      radius:     optional int. used for rim signals that come from
-                   circle detectors (HoughCircles, hoop config).
-      track_id:   optional stable identity, when the source supplies one.
-      extras:     free-form dict for signal-specific data (mask area,
-                   pose keypoints, etc.). the fuser ignores this.
-    """
+    """one detector's output for one target on one frame."""
     source: str
     target: Target
     frame_id: int
@@ -79,25 +35,7 @@ class PerceptionSignal:
 
 @dataclass
 class FusedResult:
-    """consensus output for a single target on a single frame.
-
-    fields:
-      target:                 which target this is for
-      frame_id:               frame this fused result applies to
-      center:                 consensus (x, y) or None if no signals
-      bbox:                   consensus [x1,y1,x2,y2] when applicable
-      radius:                 consensus int (rim only)
-      confidence:             0-1 fused confidence. higher when more
-                               independent sources agree and each
-                               source was itself confident.
-      contributing_sources:   list of source tags that contributed.
-      signal_count:           how many signals were fused.
-      agreement_score:        0-1; 1 means all signals agree to within
-                               the fusion tolerance, 0 means they
-                               disagree completely. separate from
-                               confidence so callers can threshold on
-                               either.
-    """
+    """consensus across contributing signals for one target on one frame."""
     target: Target
     frame_id: int
     center: tuple[float, float] | None = None
@@ -110,17 +48,7 @@ class FusedResult:
 
 
 class ConsensusFuser:
-    """fuse multiple PerceptionSignal lists into one FusedResult per target.
-
-    tunables:
-      min_signal_conf:       ignore signals below this per-signal conf.
-      center_agreement_px:   signals whose centers are within this
-                              many pixels count as agreeing.
-      bbox_iou_merge:        bboxes with IoU above this merge into one.
-      disagreement_penalty:  confidence multiplier applied when signals
-                              disagree on center. 0.5 = halve confidence
-                              per outlier beyond the agreement radius.
-    """
+    """fuse PerceptionSignal lists into FusedResult per target."""
 
     def __init__(
         self,
@@ -136,25 +64,24 @@ class ConsensusFuser:
         self.disagreement_penalty = float(disagreement_penalty)
 
     def fuse_rim(self, signals: list[PerceptionSignal]) -> FusedResult | None:
-        """rim is a single point + radius. return one FusedResult or None."""
+        # rim is one point + optional radius.
         return self._fuse_single_point(signals, target="rim",
                                         include_radius=True)
 
     def fuse_ball(self, signals: list[PerceptionSignal]) -> FusedResult | None:
-        """ball is a single bbox. return one FusedResult or None."""
+        # ball is one bbox.
         return self._fuse_single_bbox(signals, target="ball")
 
     def fuse_players(self, signals: list[PerceptionSignal]
                      ) -> list[FusedResult]:
-        """players are multiple bboxes. cluster by IoU, one result per
-        cluster."""
+        # players are multiple bboxes; cluster by iou, one result per cluster.
         if not signals:
             return []
         signals = [s for s in signals if s.confidence >= self.min_signal_conf
                     and s.bbox is not None]
         if not signals:
             return []
-        # greedy IoU clustering.
+        # greedy iou clustering.
         clusters: list[list[PerceptionSignal]] = []
         for s in sorted(signals, key=lambda x: x.confidence, reverse=True):
             placed = False
@@ -193,25 +120,21 @@ class ConsensusFuser:
                 signal_count=1, agreement_score=1.0,
             )
         frame_id = signals[0].frame_id
-        # weighted median of centers, weights = per-signal confidence.
         xs = np.array([s.xy()[0] for s in signals], dtype=float)
         ys = np.array([s.xy()[1] for s in signals], dtype=float)
         ws = np.array([max(s.confidence, 1e-3) for s in signals], dtype=float)
         cx = float(_weighted_median(xs, ws))
         cy = float(_weighted_median(ys, ws))
 
-        # agreement: fraction of signals within center_agreement_px of fused.
         d = np.hypot(xs - cx, ys - cy)
         agreeing = (d <= self.center_agreement_px).sum() / len(d)
-        # confidence: weighted mean of per-signal conf, penalised by disagreement.
         base_conf = float((ws * np.array([s.confidence for s in signals])).sum()
                           / ws.sum())
-        # each outlier beyond the agreement radius scales conf by the penalty.
+        # penalty applied once per outlier beyond agreement radius.
         outliers = int((d > self.center_agreement_px).sum())
-        penalty = self.disagreement_penalty ** outliers
-        fused_conf = float(np.clip(base_conf * penalty, 0.0, 1.0))
+        fused_conf = float(np.clip(base_conf * (self.disagreement_penalty ** outliers),
+                                     0.0, 1.0))
 
-        # rim radius: median of contributing signals that supplied one.
         radius = None
         if include_radius:
             rs = [s.radius for s in signals if s.radius is not None]
@@ -246,7 +169,7 @@ class ConsensusFuser:
                 contributing_sources=[s.source],
                 signal_count=1, agreement_score=1.0,
             )
-        # highest-confidence signal is the seed; merge others that overlap.
+        # seed = highest-conf; merge any others that overlap the seed.
         signals = sorted(signals, key=lambda x: x.confidence, reverse=True)
         seed = signals[0]
         merged = [seed]
@@ -257,21 +180,19 @@ class ConsensusFuser:
 
     def _reduce_bbox_cluster(self, cluster: list[PerceptionSignal],
                               target: Target) -> FusedResult:
-        """weighted-average bbox across a cluster that passed IoU merge."""
         ws = np.array([max(s.confidence, 1e-3) for s in cluster], dtype=float)
         boxes = np.array([s.bbox for s in cluster], dtype=float)
         fused_bbox = (boxes * ws[:, None]).sum(axis=0) / ws.sum()
         cx = float((fused_bbox[0] + fused_bbox[2]) / 2)
         cy = float((fused_bbox[1] + fused_bbox[3]) / 2)
-        # agreement across the cluster's centers.
         centers = (boxes[:, :2] + boxes[:, 2:]) / 2
         d = np.hypot(centers[:, 0] - cx, centers[:, 1] - cy)
         agreement = float((d <= self.center_agreement_px).mean())
         base = float((ws * np.array([s.confidence for s in cluster])).sum()
                       / ws.sum())
         outliers = int((d > self.center_agreement_px).sum())
-        penalty = self.disagreement_penalty ** outliers
-        fused_conf = float(np.clip(base * penalty, 0.0, 1.0))
+        fused_conf = float(np.clip(base * (self.disagreement_penalty ** outliers),
+                                     0.0, 1.0))
         return FusedResult(
             target=target, frame_id=cluster[0].frame_id,
             center=(cx, cy), bbox=fused_bbox.tolist(),

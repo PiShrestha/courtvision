@@ -1,33 +1,4 @@
-"""SAM 3 / SAM 3.1 video-predictor wrapper producing PerceptionSignals.
-
-uses Meta's SAM 3 (Nov 2025) + SAM 3.1 Object Multiplex (Mar 2026).
-requires HF auth for the gated checkpoints `facebook/sam3` and
-`facebook/sam3.1`.
-
-strategy:
-- create one video session per run and prompt it once with all the
-  canonical concepts the caller cares about
-    ("basketball rim", "basketball", "basketball player")
-- SAM 3 tracks each prompted concept across the whole clip, returning
-  per-frame masks + per-instance IDs. we convert those to
-  PerceptionSignal(target=..., bbox=..., center=..., track_id=...)
-  records that the ConsensusFuser consumes identically to YOLOE / YOLO
-  output.
-
-computational trade-off: SAM 3 is 848M params. we run it OFFLINE
-once per clip (not per-frame interleaved with YOLO) and cache the
-per-frame signals to disk. the rest of the pipeline replays those
-signals during its normal loop — no per-frame SAM 3 inference during
-evaluation.
-
-checkpoints:
-  facebook/sam3        sam3.pt               original Nov 2025 release
-  facebook/sam3.1      sam3.1_multiplex.pt   Mar 2026 Object Multiplex
-                                              (faster multi-object tracking)
-
-we default to 3.1_multiplex because our workload is inherently
-multi-object (rim + ball + 2 players simultaneously).
-"""
+"""sam 3 / sam 3.1 video predictor wrapper emitting PerceptionSignals."""
 
 from __future__ import annotations
 
@@ -48,56 +19,38 @@ DEFAULT_CONCEPTS = {
     "player": "basketball player",
 }
 
-DEFAULT_CHECKPOINT = "sam3.1"     # "sam3" (Nov 2025) | "sam3.1" (Mar 2026)
+DEFAULT_CHECKPOINT = "sam3.1"
 
 
 @dataclass
 class Sam3Config:
-    """declarative config for one SAM 3 offline pass over a clip."""
-    checkpoint: str = DEFAULT_CHECKPOINT    # "sam3" | "sam3.1"
+    """config for one sam 3 offline pass over a clip."""
+    checkpoint: str = DEFAULT_CHECKPOINT        # "sam3" | "sam3.1"
     concepts: dict[str, str] = field(
         default_factory=lambda: dict(DEFAULT_CONCEPTS)
     )
-    # prompt at this frame index (relative to the clip start). 0 is fine
-    # for most clips; anything later works if the first few frames are
-    # partially occluded.
     prompt_frame: int = 0
-    # min per-detection score to emit a PerceptionSignal.
     min_score: float = 0.2
-    device: str = "cuda"            # falls back to "cpu" automatically
+    device: str = "cuda"
 
 
 class Sam3Tracker:
-    """one SAM 3 video session per clip. produces per-frame signals.
-
-    usage:
-        tracker = Sam3Tracker(config=Sam3Config(checkpoint="sam3.1"))
-        signals = tracker.run(video_path, start_s=268.0, end_s=338.0)
-
-    signals is a list[PerceptionSignal] across all frames in the window.
-    callers index by frame_id for per-frame fusion.
-
-    `run()` returns in-memory for small clips and writes to disk via
-    `run_to_file()` for large clips so the feature is usable as a
-    prebuilt cache on slurm.
-    """
+    """one sam 3 video session per clip; emits per-frame PerceptionSignals."""
 
     def __init__(self, config: Sam3Config | None = None) -> None:
         self.config = config or Sam3Config()
         self._predictor = None
 
     def available(self) -> bool:
-        """cheap check: imports + HF cache for the requested checkpoint."""
+        # imports + hf gate in one cheap check.
         try:
             import sam3                                     # noqa: F401
             from sam3.model_builder import build_sam3_video_predictor   # noqa: F401
         except ImportError:
             return False
-        # HF gate: touch the repo once and see if the request succeeds.
         try:
             from huggingface_hub import HfApi
-            api = HfApi()
-            api.list_repo_files(self._repo_id(), repo_type="model")
+            HfApi().list_repo_files(self._repo_id(), repo_type="model")
             return True
         except Exception:
             return False
@@ -108,11 +61,10 @@ class Sam3Tracker:
         start_s: float = 0.0,
         end_s: float | None = None,
     ) -> list[PerceptionSignal]:
-        """run the video predictor end-to-end and flatten masks to bboxes."""
         self._ensure_predictor()
         session = self._start_session(video_path, start_s, end_s)
 
-        # prompt all concepts on the same frame.
+        # prompt all concepts at the seed frame.
         concept_to_id: dict[str, list[int]] = {}
         for canonical, phrase in self.config.concepts.items():
             ids = self._add_text_prompt(
@@ -122,7 +74,7 @@ class Sam3Tracker:
             )
             concept_to_id[canonical] = ids
 
-        # propagate forward. SAM 3 yields per-frame per-instance masks.
+        # propagate forward; one signal per (frame, instance) above threshold.
         signals: list[PerceptionSignal] = []
         for frame_output in self._propagate(session["session_id"]):
             frame_id = int(frame_output["frame_idx"])
@@ -155,7 +107,7 @@ class Sam3Tracker:
         start_s: float = 0.0,
         end_s: float | None = None,
     ) -> Path:
-        """run + write PerceptionSignals as JSONL (frame_id-sorted)."""
+        # run + write jsonl sorted by (frame_id, target).
         signals = self.run(video_path, start_s=start_s, end_s=end_s)
         out = Path(out_path)
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -171,26 +123,17 @@ class Sam3Tracker:
         return "facebook/sam3.1" if self.config.checkpoint == "sam3.1" else "facebook/sam3"
 
     def _ensure_predictor(self):
-        """lazy-import + weight download. cheap after the first call."""
+        # lazy import + weight download; cheap after first call.
         if self._predictor is not None:
             return
         from sam3.model_builder import build_sam3_video_predictor
-        # the builder reads the HF repo based on an env var or kwarg;
-        # different SAM 3 releases expose slightly different handles.
-        # we let the library pick up HF auth from ~/.cache/huggingface.
         os.environ.setdefault("HF_HUB_REPO", self._repo_id())
         self._predictor = build_sam3_video_predictor()
 
     def _start_session(self, video_path: str, start_s: float,
                         end_s: float | None):
-        """start a video session. real SAM 3 API does NOT accept
-        start_seconds/end_seconds — callers must pre-cut the clip first
-        (see run_sam3_cache.sbatch for the ffmpeg path).
-
-        `offload_video_to_cpu=True` keeps decoded frames in CPU memory
-        (vs GPU memory); combined with the 30fps re-encode, this is what
-        makes the cache fit in 48GB host RAM.
-        """
+        # sam 3's start_session does not accept start/end kwargs; callers
+        # must pre-cut the clip. offload_video_to_cpu keeps frames on host ram.
         return self._predictor.handle_request(
             request={
                 "type": "start_session",
@@ -201,14 +144,6 @@ class Sam3Tracker:
 
     def _add_text_prompt(self, session_id: str, frame_index: int,
                           text: str) -> list[int]:
-        """add a text prompt on a specific frame; return the object id(s)
-        the predictor assigned to this concept.
-
-        real response shape: {"frame_index": int, "outputs": {
-            "out_obj_ids": array, "out_binary_masks": array, "output_probs": array
-        }}. one prompt can create multiple obj ids (e.g. "basketball players"
-        can resolve to two separate tracked instances).
-        """
         response = self._predictor.handle_request(
             request={
                 "type": "add_prompt",
@@ -217,20 +152,14 @@ class Sam3Tracker:
                 "text": text,
             },
         )
-        outputs = response.get("outputs") or {}
+        outputs = response.get("outputs")
+        if outputs is None:
+            return []
         obj_ids = _safe_list(outputs.get("out_obj_ids"))
         return [int(x) for x in obj_ids]
 
     def _propagate(self, session_id: str):
-        """propagation is a STREAM request (yields per-frame), not a single
-        handle_request. each response has shape:
-            {"frame_index": int, "outputs": {
-                "out_obj_ids": [obj_id, ...],
-                "out_binary_masks": [H x W bool, ...],
-                "output_probs": [float, ...]
-            }}
-        we convert to the caller's expected (id, mask, score) triples.
-        """
+        # propagate is a stream request (yields per frame).
         for response in self._predictor.handle_stream_request(
             request={
                 "type": "propagate_in_video",
@@ -239,9 +168,13 @@ class Sam3Tracker:
             },
         ):
             frame_idx = int(response.get("frame_index", 0))
-            out = response.get("outputs") or {}
+            out = response.get("outputs")
+            if out is None:
+                yield {"frame_idx": frame_idx, "instances": []}
+                continue
             obj_ids = _safe_list(out.get("out_obj_ids"))
-            masks = list(out.get("out_binary_masks") or [])
+            masks_raw = out.get("out_binary_masks")
+            masks = list(masks_raw) if masks_raw is not None else []
             probs_raw = out.get("output_probs")
             probs = _safe_list(probs_raw) if probs_raw is not None \
                     else [1.0] * len(obj_ids)
@@ -262,10 +195,7 @@ class Sam3Tracker:
 
 
 def _mask_to_bbox(mask) -> tuple[float, float, float, float] | None:
-    """mask -> axis-aligned bbox. handles torch tensor (incl. CUDA), numpy
-    array, or list input. SAM 3 returns torch tensors so we always do a
-    safe conversion to numpy on CPU first.
-    """
+    # mask -> axis-aligned bbox. accepts torch tensor (cpu/cuda), ndarray, or list.
     if hasattr(mask, "detach") and hasattr(mask, "cpu"):
         mask = mask.detach().cpu().numpy()
     arr = np.asarray(mask)
@@ -278,7 +208,7 @@ def _mask_to_bbox(mask) -> tuple[float, float, float, float] | None:
 
 
 def _safe_list(obj):
-    """torch tensor / numpy array / list -> python list."""
+    # torch tensor / ndarray / list / None -> python list.
     if obj is None:
         return []
     if hasattr(obj, "tolist"):
@@ -319,7 +249,7 @@ def _signal_to_dict(s: PerceptionSignal) -> dict:
 
 
 def load_signals(path: str | Path) -> list[PerceptionSignal]:
-    """read back PerceptionSignals written by run_to_file()."""
+    # replay PerceptionSignals written by run_to_file().
     out: list[PerceptionSignal] = []
     with Path(path).open() as f:
         for line in f:
@@ -339,7 +269,7 @@ def load_signals(path: str | Path) -> list[PerceptionSignal]:
 def iter_all_signals(trackers: Iterable[Sam3Tracker], video_path: str,
                       start_s: float = 0.0, end_s: float | None = None
                       ) -> list[PerceptionSignal]:
-    """run one or more SAM 3 trackers on a clip; flatten signals."""
+    # run multiple trackers on a clip; flatten the output.
     out: list[PerceptionSignal] = []
     for t in trackers:
         out.extend(t.run(video_path, start_s=start_s, end_s=end_s))

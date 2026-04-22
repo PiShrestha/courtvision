@@ -1,31 +1,4 @@
-"""shot_pipeline_v3: consensus-driven orchestrator composing v2 rules +
-optional YOLOE / RTMPose / SAM 3 (or SAM 3.1) backends.
-
-what's new vs v2:
-
-  pluggable backends
-    - use_yoloe:       open-vocab YOLOE producing rim/ball/player signals
-    - use_pose:        RTMPose producing shooting-pose score per player
-    - sam3_cache_path: pre-computed SAM 3 signals from disk (JSONL)
-    - custom_model:    legacy path from custom_tracker.py (hoop model)
-  all optional; when none are enabled v3 behaves exactly like v2.
-
-  fused perception
-    every enabled backend emits PerceptionSignal records. the
-    ConsensusFuser combines them per-target per-frame. downstream
-    rules (ShotAttemptV2, ShotMadeV2) consume the fused result as if
-    it were a single detector's output, but with confidence that
-    reflects inter-detector agreement.
-
-  shooting-pose predicate
-    when --use-pose is on, shot_attempt requires pose-based evidence
-    in addition to its existing conjunction. reduces false positives
-    on dribbles that happen to produce upward ball motion but no
-    actual shooting posture.
-
-the pipeline writes the same event schema as v2. downstream viz /
-evaluation / aggregator do not need to change.
-"""
+"""v3 orchestrator: v2 rules + optional yoloe/rtmpose/sam3 backends."""
 
 from __future__ import annotations
 
@@ -46,7 +19,7 @@ from shot_made_v2 import ShotMadeV2
 
 @dataclass
 class V3Config:
-    """declarative config for one v3 run. mirrors run_demo_v2 CLI flags."""
+    """config for one v3 run."""
     # rim tracker (handcrafted)
     tracker_kind: str = "flow"
     reseed_every: int = 90
@@ -80,7 +53,7 @@ class V3Config:
 
 @dataclass
 class _PoseHistory:
-    """rolling per-player shooting-pose scores from RTMPose."""
+    """rolling per-player shooting-pose scores."""
     per_player: dict[int, deque] = field(default_factory=dict)
     window: int = 10
 
@@ -96,7 +69,7 @@ class _PoseHistory:
 
 
 class ShotPipelineV3:
-    """orchestrator for consensus-driven shot detection."""
+    """consensus-driven shot detection orchestrator."""
 
     def __init__(
         self,
@@ -108,7 +81,7 @@ class ShotPipelineV3:
         self.rim = RimTracker(anchor=anchor, tracker_kind=self.config.tracker_kind,
                                 reseed_every=self.config.reseed_every)
 
-        # fps-scaled rule windows (reuse v2 semantics).
+        # fps-scaled rule windows (same scaling as v2).
         scale = max(1.0, self.config.fps / 30.0)
         self.att = ShotAttemptV2(
             upward_trigger=self.config.upward_trigger / scale,
@@ -154,18 +127,13 @@ class ShotPipelineV3:
         yoloe_signals: list[PerceptionSignal] | None = None,
         pose_signals: list[PerceptionSignal] | None = None,
     ) -> list[dict[str, Any]]:
-        """consume one frame's signals, emit events.
-
-        this is a superset of v2's update(): v2 callers pass no optional
-        signal kwargs and get v2 behaviour unchanged (baseline config).
-        v3 callers pass open-vocab / pose / SAM 3 signals for consensus.
-        """
-        # ---- gather signals per target ---------------------------------------
+        # superset of v2 update: omit optional kwargs -> v2 behaviour.
+        # ---- gather signals per target ------------------------------------
         rim_signals: list[PerceptionSignal] = []
         ball_signals: list[PerceptionSignal] = []
         player_signals: list[PerceptionSignal] = []
 
-        # handcrafted rim tracker → one rim signal.
+        # handcrafted rim tracker -> one signal.
         if frame is not None:
             self._last_hoop = self.rim.update(frame, frame_id)
             rim_signals.append(PerceptionSignal(
@@ -176,14 +144,14 @@ class ShotPipelineV3:
                 radius=int(self._last_hoop.radius),
             ))
 
-        # COCO YOLO ball → ball signal.
+        # coco yolo ball -> one signal.
         if ball_bbox is not None:
             ball_signals.append(PerceptionSignal(
                 source="coco_yolo", target="ball", frame_id=frame_id,
                 confidence=0.5, bbox=list(ball_bbox),
             ))
 
-        # COCO YOLO players (from DuoTracker output upstream).
+        # coco yolo players (already DuoTracker-filtered upstream).
         for t in player_tracks:
             player_signals.append(PerceptionSignal(
                 source="coco_yolo_duotracker", target="player", frame_id=frame_id,
@@ -192,24 +160,23 @@ class ShotPipelineV3:
                 track_id=int(t.get("track_id", -1)),
             ))
 
-        # optional: YOLOE open-vocab signals (pre-separated by caller).
+        # optional: yoloe signals forwarded by caller.
         for s in (yoloe_signals or []):
             if s.target == "rim":   rim_signals.append(s)
             if s.target == "ball":  ball_signals.append(s)
             if s.target == "player": player_signals.append(s)
 
-        # optional: SAM 3 cache signals for this frame.
+        # optional: sam 3 cache signals for this frame.
         for s in self._sam3_by_frame.get(frame_id, []):
             if s.target == "rim":   rim_signals.append(s)
             if s.target == "ball":  ball_signals.append(s)
             if s.target == "player": player_signals.append(s)
 
-        # ---- fuse ------------------------------------------------------------
+        # ---- fuse ---------------------------------------------------------
         fused_rim = self.fuser.fuse_rim(rim_signals)
         fused_ball = self.fuser.fuse_ball(ball_signals)
 
-        # if fusion produced a better rim position than our handcrafted tracker,
-        # update _last_hoop so downstream rules use the fused rim.
+        # adopt fused rim when it's more confident than the handcrafted one.
         if fused_rim is not None and fused_rim.confidence > 0.5:
             self._last_hoop = TrackedHoop(
                 center=(int(fused_rim.center[0]), int(fused_rim.center[1])),
@@ -217,22 +184,21 @@ class ShotPipelineV3:
                 source=f"fused({len(fused_rim.contributing_sources)})",
             )
 
-        # ---- pose history update ---------------------------------------------
+        # ---- pose history update ------------------------------------------
         for s in (pose_signals or []):
             if s.track_id is not None:
                 extra = s.extras.get("pose", {}) if s.extras else {}
                 score = float(extra.get("shooting_pose_score", 0.0))
                 self.pose_history.push(s.track_id, score)
 
-        # ---- drive the rules -------------------------------------------------
-        # shot_attempt + possession (v2 logic unchanged).
+        # ---- drive the rules ----------------------------------------------
+        # shot_attempt + possession: v2 logic, unchanged.
         fused_ball_bbox = fused_ball.bbox if fused_ball else None
         attempt_events = self.att.update(
             frame_id, fused_ball_bbox, player_tracks, hoop=self._last_hoop,
         )
 
-        # optional pose gate on shot_attempt — drop attempts that lack a
-        # plausible shooting pose within the recent window.
+        # pose gate: drop attempts lacking a recent shooting-pose score.
         if self.config.use_pose:
             attempt_events = [e for e in attempt_events
                               if self._pose_gate_passes(e)]
@@ -249,13 +215,13 @@ class ShotPipelineV3:
         return attempt_events + made_events
 
     def stats(self, events: list[dict]) -> dict:
-        """per-player + overall FG stats, same schema as v2."""
+        # per-player + overall fg stats (same schema as v2).
         return field_goal_stats(events)
 
     # ---- internals ----------------------------------------------------------
 
     def _pose_gate_passes(self, event: dict) -> bool:
-        """for shot_attempt, require peak shooting_pose in recent window."""
+        # shot_attempt needs peak pose score above threshold in recent window.
         if event.get("event") != "shot_attempt":
             return True
         pid = int(event.get("player", -1))
@@ -263,7 +229,7 @@ class ShotPipelineV3:
         return peak >= self.config.pose_score_threshold
 
     def _load_sam3_cache(self, path: str) -> None:
-        """load pre-computed SAM 3 PerceptionSignals from JSONL."""
+        # load pre-computed sam 3 signals from jsonl.
         import json
         self._sam3_by_frame = {}
         p = Path(path)

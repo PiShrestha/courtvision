@@ -1,26 +1,4 @@
-"""RTMPose skeleton keypoints for shooting-motion detection.
-
-wraps rtmlib (CPU / ONNX-runtime, no mmpose/pytorch dep for inference).
-emits PerceptionSignal extras containing 17 COCO keypoints per player
-bbox + derived features that the shot_attempt rule can gate on:
-
-  shooting_pose_score  [0, 1]  combined score from three cues:
-      wrist_above_head  wrist y < head y (ball is typically above)
-      elbow_extension    elbow angle in last frame > 160 deg (release)
-      torso_forward      torso pitched forward (shot prep)
-
-the scorer returns a float per player. the shot_attempt rule uses it
-as one more predicate in the conjunction (requiring e.g. >= 0.5 in
-the 10 frames preceding the velocity trigger).
-
-keypoint indices follow COCO-WholeBody (first 17 are body):
-  0 nose, 1/2 eye, 3/4 ear, 5/6 shoulder, 7/8 elbow, 9/10 wrist,
-  11/12 hip, 13/14 knee, 15/16 ankle.
-
-runtime: rtmlib runs ONNX CPU at ~30-50 ms per player bbox. acceptable
-for 2 players at 30 fps; we run it on-demand only around windows
-where velocity+release are already plausible, not every frame.
-"""
+"""rtmpose keypoints + derived shooting-motion score per player."""
 
 from __future__ import annotations
 
@@ -37,7 +15,7 @@ except Exception:  # pragma: no cover
 from fusion import PerceptionSignal
 
 
-# COCO body keypoint indices we care about.
+# coco body keypoint indices we use.
 IDX = {
     "nose": 0,
     "l_shoulder": 5, "r_shoulder": 6,
@@ -49,12 +27,12 @@ IDX = {
 
 @dataclass
 class PoseFeatures:
-    """derived shooting-pose cues on one player on one frame."""
+    """derived shooting-pose cues for one player on one frame."""
     wrist_above_head: bool
     elbow_extended: bool
     torso_forward: bool
-    shooting_pose_score: float      # 0-1 weighted sum of the three cues
-    keypoints: np.ndarray           # 17x3 (x, y, conf)
+    shooting_pose_score: float
+    keypoints: np.ndarray
 
     def to_dict(self) -> dict:
         return {
@@ -66,17 +44,7 @@ class PoseFeatures:
 
 
 class PoseEstimator:
-    """RTMPose + shooting-motion derivation.
-
-    args:
-        device:            "cpu" (default, onnx-runtime) or "cuda".
-        backend:           "onnxruntime" (default) or "opencv".
-        mode:              "lightweight" | "balanced" | "performance"
-                           (rtmlib preset names; bigger = slower + more accurate)
-        min_kpt_conf:      per-keypoint confidence floor for the derived
-                           features. below this we treat the keypoint as
-                           missing.
-    """
+    """rtmpose + shooting-motion score."""
 
     def __init__(
         self,
@@ -97,13 +65,9 @@ class PoseEstimator:
 
     def infer(self, frame: np.ndarray, player_bboxes: list[list[float]]
                ) -> list[PoseFeatures | None]:
-        """one PoseFeatures per input bbox (None if keypoints are too sparse)."""
+        # one PoseFeatures per input bbox, matched to rtmlib outputs by iou.
         if self.model is None or not player_bboxes:
             return [None] * len(player_bboxes)
-        # rtmlib takes the whole frame and runs its own detector unless you
-        # feed precomputed bboxes. Body(mode=...).__call__(img) returns
-        # (keypoints, scores) for all detected bodies. we match each returned
-        # body back to our bboxes by IoU so the output order matches input.
         kpts, scores = self.model(frame)
         if kpts is None or len(kpts) == 0:
             return [None] * len(player_bboxes)
@@ -128,7 +92,7 @@ class PoseEstimator:
         player_tracks: list[dict],
         frame_id: int,
     ) -> list[PerceptionSignal]:
-        """produce PerceptionSignal records with pose extras for each player."""
+        # one PerceptionSignal per player (extras carry pose dict).
         if not player_tracks:
             return []
         bboxes = [t["bbox"] for t in player_tracks]
@@ -151,39 +115,43 @@ class PoseEstimator:
     # ---- internals ----------------------------------------------------------
 
     def _derive(self, kpts: np.ndarray, scores: np.ndarray) -> PoseFeatures:
-        """compute the three shooting cues + a combined score."""
+        # derive three shooting cues + combined score 0..1.
         kxy = np.asarray(kpts, dtype=float).reshape(-1, 2)
         ks = np.asarray(scores, dtype=float)
         full = np.concatenate([kxy, ks[:, None]], axis=1)   # 17x3
 
-        # wrist above head: use the higher-confidence wrist.
+        # track side explicitly so we don't rely on numpy-array `is` identity.
         nose = self._pt(full, IDX["nose"])
         lw = self._pt(full, IDX["l_wrist"])
         rw = self._pt(full, IDX["r_wrist"])
         shooting_wrist = None
-        for w in (lw, rw):
-            if w is None: continue
+        shooting_side: str | None = None
+        for side, w in (("l", lw), ("r", rw)):
+            if w is None:
+                continue
             if shooting_wrist is None or w[1] < shooting_wrist[1]:
                 shooting_wrist = w
-        wrist_above_head = (nose is not None and shooting_wrist is not None
-                             and shooting_wrist[1] < nose[1])
+                shooting_side = side
+        wrist_above_head = bool(
+            nose is not None and shooting_wrist is not None
+            and shooting_wrist[1] < nose[1]
+        )
 
-        # elbow extension: inner angle at the shooting elbow.
-        # same-side of the shooting wrist.
-        if shooting_wrist is lw:
+        # elbow extension on the same-side arm as the shooting wrist.
+        if shooting_side == "l":
             sh, el, wr = (self._pt(full, IDX["l_shoulder"]),
                           self._pt(full, IDX["l_elbow"]),
                           lw)
-        elif shooting_wrist is rw:
+        elif shooting_side == "r":
             sh, el, wr = (self._pt(full, IDX["r_shoulder"]),
                           self._pt(full, IDX["r_elbow"]),
                           rw)
         else:
             sh = el = wr = None
         elbow_angle = _angle(sh, el, wr) if all(p is not None for p in (sh, el, wr)) else None
-        elbow_extended = (elbow_angle is not None and elbow_angle >= 150.0)
+        elbow_extended = bool(elbow_angle is not None and elbow_angle >= 150.0)
 
-        # torso forward: vertical line shoulder -> hip pitched forward.
+        # torso pitch from vertical (shoulder -> hip line).
         l_sh = self._pt(full, IDX["l_shoulder"])
         r_sh = self._pt(full, IDX["r_shoulder"])
         l_hip = self._pt(full, IDX["l_hip"])
@@ -191,7 +159,7 @@ class PoseEstimator:
         mid_sh = _midpoint(l_sh, r_sh)
         mid_hip = _midpoint(l_hip, r_hip)
         torso_pitch = _vertical_pitch(mid_sh, mid_hip)
-        torso_forward = torso_pitch is not None and 5 <= torso_pitch <= 45
+        torso_forward = bool(torso_pitch is not None and 5 <= torso_pitch <= 45)
 
         score = (0.5 * float(wrist_above_head)
                  + 0.3 * float(elbow_extended)
@@ -233,7 +201,7 @@ def _iou(a: list[float], b: list[float]) -> float:
 
 
 def _angle(a, b, c) -> float:
-    """degree angle at vertex b for triangle a-b-c."""
+    # inner angle (deg) at vertex b.
     v1 = np.array(a) - np.array(b)
     v2 = np.array(c) - np.array(b)
     cos = float(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-9))
@@ -247,7 +215,7 @@ def _midpoint(a, b) -> np.ndarray | None:
 
 def _vertical_pitch(top: np.ndarray | None, bottom: np.ndarray | None
                      ) -> float | None:
-    """pitch (deg) of the line top→bottom from true vertical."""
+    # pitch (deg) of line top->bottom from vertical.
     if top is None or bottom is None: return None
     dx = float(bottom[0] - top[0])
     dy = float(bottom[1] - top[1])
@@ -258,7 +226,7 @@ def _vertical_pitch(top: np.ndarray | None, bottom: np.ndarray | None
 def iter_all_signals(estimators: Iterable[PoseEstimator],
                       frame: np.ndarray, player_tracks: list[dict],
                       frame_id: int) -> list[PerceptionSignal]:
-    """run one or more pose estimators on a frame; flatten signals."""
+    # run multiple estimators on a frame; flatten signals.
     out: list[PerceptionSignal] = []
     for e in estimators:
         out.extend(e.emit_signals(frame, player_tracks, frame_id))

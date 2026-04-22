@@ -1,6 +1,6 @@
 #!/bin/bash
 # canary: verify torch + ultralytics work on a V100 via the generic gpu
-# partition under the biocomplexity account (different allocation from the
+# partition. we use cs6770_sp26 (balance-audited) to verify the stack.
 # saturated gpu-a6000 / cs6770_sp26 slot).
 #
 # excludes udc-an33* nodes per the torch/cuDNN mismatch documented in

@@ -1,5 +1,5 @@
 #!/bin/bash
-# 50-clip flow rerun on A100 via the biocomplexity account.
+# 50-clip flow rerun on A100 under cs6770_sp26 (balance audited).
 # a100 nodes (udc-an28/34/36/37) are physically separate from the broken
 # udc-an33-* v100 nodes called out in CLAUDE.local.md, so no exclude is
 # needed.
