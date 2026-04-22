@@ -80,7 +80,7 @@ class PoseEstimator:
 
     def __init__(
         self,
-        device: str = "cpu",
+        device: str = "cuda",             # gpu by default; "cpu" for login node
         backend: str = "onnxruntime",
         mode: str = "balanced",
         min_kpt_conf: float = 0.3,
