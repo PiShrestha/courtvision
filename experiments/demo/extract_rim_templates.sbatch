@@ -24,7 +24,12 @@ source .venv/bin/activate
 
 module load ffmpeg 2>/dev/null || true
 
+: "${RIM_INPUT_DIR:=experiments/demo/rims_mk}"
+: "${RIM_OUT_DIR:=${RIM_INPUT_DIR}/templates}"
+: "${RIM_PAD_FRAC:=0.12}"
+echo "extracting from ${RIM_INPUT_DIR} -> ${RIM_OUT_DIR} (pad=${RIM_PAD_FRAC})"
+
 python experiments/demo/extract_rim_templates.py \
-    --input-dir experiments/demo/rims_mk \
-    --out-dir   experiments/demo/rims_mk/templates \
-    --pad-frac  0.12
+    --input-dir "${RIM_INPUT_DIR}" \
+    --out-dir   "${RIM_OUT_DIR}" \
+    --pad-frac  "${RIM_PAD_FRAC}"
