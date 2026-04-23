@@ -13,8 +13,9 @@ numpy>=1.24
 torch>=2.0,<2.11
 torchvision>=0.15
 
-# narrative / scouting summary
-google-generativeai>=0.7   # gemini api client
+# narrative / scouting summary + stage-3 vlm reasoning (vlm_verify.py)
+google-genai>=0.3          # modern gemini sdk; replaces deprecated google-generativeai
+Pillow>=10.0               # pil.image; gemini multimodal input
 python-dotenv>=1.0         # load api keys from .env
 
 # config + data i/o

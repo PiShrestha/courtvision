@@ -8,7 +8,7 @@ from collections import Counter
 from typing import Any
 
 try:
-    import google.generativeai as genai
+    from google import genai
 except Exception:  # pragma: no cover - optional at import
     genai = None
 
@@ -16,18 +16,19 @@ except Exception:  # pragma: no cover - optional at import
 class NarrativeGenerator:
     """two-mode summary generator: gemini api or local fallback."""
 
-    def __init__(self, api_key: str | None = None, model: str = "gemini-1.5-flash"):
+    def __init__(self, api_key: str | None = None, model: str = "gemini-2.5-flash"):
         self.model = model
         key = api_key or os.getenv("GEMINI_API_KEY")
-        self.gemini_enabled = False
+        self.client = None
         if genai is not None and key:
-            genai.configure(api_key=key)
-            self.gemini_enabled = True
+            self.client = genai.Client(api_key=key)
 
     def generate(self, events: list[dict[str, Any]]) -> str:
-        if self.gemini_enabled and genai is not None:
+        if self.client is not None:
             prompt = self._build_prompt(events)
-            response = genai.GenerativeModel(self.model).generate_content(prompt)
+            response = self.client.models.generate_content(
+                model=self.model, contents=prompt,
+            )
             return response.text or ""
         return self._local_summary(events)
 
