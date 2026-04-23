@@ -1,0 +1,274 @@
+<!doctype html>
+<!-- single-file browser annotator for courtvision worksheets.
+     open this file locally, load the mp4 + worksheet.csv, annotate with
+     keyboard shortcuts, then click "download csv" to save the filled
+     worksheet. no server, no rsync round-trip for the filled file. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CourtVision Annotator</title>
+<style>
+  :root {
+    --bg: #f8f9fb; --card: #fff; --border: #e1e4e8; --accent: #1f6feb;
+    --ok: #2e8b57; --wrong: #c26f20; --bad: #b42318; --missed: #555;
+  }
+  body { font-family: -apple-system, Helvetica, Arial, sans-serif;
+         background: var(--bg); color: #222; margin: 0; padding: 1em; }
+  .row { display: flex; gap: 1em; align-items: flex-start; }
+  .card { background: var(--card); border: 1px solid var(--border);
+          border-radius: 8px; padding: 1em; margin-bottom: 1em; }
+  #video { width: 100%; max-height: 60vh; background: #000; border-radius: 6px; }
+  .event-card { padding: 0.5em 0.8em; border: 1px solid var(--border);
+                border-radius: 6px; margin: 0.25em 0; cursor: pointer;
+                display: flex; justify-content: space-between; gap: 0.5em; }
+  .event-card.active { border-color: var(--accent); background: #eef4ff; }
+  .event-card .verdict { font-size: 0.85em; font-weight: 600; }
+  .v-ok    { color: var(--ok); }
+  .v-wrong { color: var(--wrong); }
+  .v-fp    { color: var(--bad); }
+  .v-missed{ color: var(--missed); }
+  button { font-size: 0.9em; padding: 0.4em 0.7em; border-radius: 5px;
+           border: 1px solid var(--border); background: #fafbfc;
+           cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.ok     { background: var(--ok);    color: #fff; border: none; }
+  button.wrong  { background: var(--wrong); color: #fff; border: none; }
+  button.fp     { background: var(--bad);   color: #fff; border: none; }
+  .shortcut { font-size: 0.75em; opacity: 0.7; margin-left: 0.4em; }
+  .stats { font-size: 0.85em; opacity: 0.75; }
+  .event-list { max-height: 70vh; overflow-y: auto; }
+  #log { font-family: monospace; font-size: 0.8em; max-height: 10em;
+         overflow-y: auto; background: #f1f3f5; padding: 0.5em; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h2 style="margin:0 0 0.3em">CourtVision Annotator</h2>
+  <div class="stats">
+    1) load mp4 &nbsp; 2) load worksheet.csv &nbsp; 3) annotate &nbsp; 4) download filled csv
+  </div>
+  <div style="margin-top: 0.7em; display: flex; gap: 1em; flex-wrap: wrap;">
+    <label>video: <input type="file" id="videoFile" accept="video/*"></label>
+    <label>worksheet: <input type="file" id="csvFile" accept=".csv,text/csv"></label>
+    <label>fps: <input type="number" id="fps" value="30" step="0.01" style="width:5em"></label>
+    <button class="primary" id="downloadBtn" disabled>download filled csv</button>
+  </div>
+</div>
+
+<div class="row">
+  <div style="flex: 2;">
+    <video id="video" controls></video>
+    <div class="card" style="margin-top: 0.7em;">
+      <strong id="curEvent">no event selected</strong>
+      <div class="stats" id="curMeta"></div>
+      <div style="margin-top: 0.5em; display: flex; gap: 0.5em; flex-wrap: wrap;">
+        <button class="ok"    onclick="setVerdict('ok')">[A] ok</button>
+        <button class="wrong" onclick="setVerdict('wrong_type')">[W] wrong_type</button>
+        <button class="fp"    onclick="setVerdict('false_positive')">[F] false_positive</button>
+        <button           onclick="setVerdict('')">[S] skip / unset</button>
+        <button           onclick="prevEvent()">[&larr;] prev</button>
+        <button           onclick="nextEvent()">[&rarr;] next</button>
+      </div>
+      <div style="margin-top: 0.7em;">
+        <button onclick="addMissed()">[M] add missed event at current time</button>
+        <select id="missedType">
+          <option value="shot_made">shot_made</option>
+          <option value="shot_miss">shot_miss</option>
+          <option value="shot_attempt">shot_attempt</option>
+        </select>
+        player:
+        <select id="missedPlayer">
+          <option value="1">1</option>
+          <option value="2">2</option>
+        </select>
+      </div>
+      <div id="log" style="margin-top: 0.7em;"></div>
+    </div>
+  </div>
+
+  <div style="flex: 1;">
+    <div class="card event-list">
+      <strong>events (click to jump)</strong>
+      <div id="events"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ----------- csv parsing / writing (handles commented headers we use) -----
+function parseCSV(text) {
+  const lines = text.split(/\r?\n/);
+  const rows = [];
+  let header = null;
+  for (const line of lines) {
+    if (!line) { rows.push({raw: "", cells: []}); continue; }
+    const cells = parseLine(line);
+    if (!header && cells[0] === "section") { header = cells; rows.push({raw: line, cells}); continue; }
+    rows.push({raw: line, cells});
+  }
+  return {header, rows};
+}
+function parseLine(line) {
+  const out = []; let cur = ""; let q = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') { q = !q; continue; }
+    if (c === ',' && !q) { out.push(cur); cur = ""; continue; }
+    cur += c;
+  }
+  out.push(cur); return out;
+}
+function serializeCSV(rows) {
+  return rows.map(r => r.cells.length ? r.cells.map(cellEsc).join(",") : "").join("\n");
+}
+function cellEsc(s) {
+  s = (s == null ? "" : String(s));
+  return /[,"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+// ----------- state ---------------------------------------------------------
+let state = {rows: [], header: null, events: [], idx: 0};
+
+document.getElementById("videoFile").addEventListener("change", (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  document.getElementById("video").src = URL.createObjectURL(f);
+  log("loaded video: " + f.name);
+});
+
+document.getElementById("csvFile").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  const text = await f.text();
+  loadWorksheet(text, f.name);
+});
+
+function loadWorksheet(text, name) {
+  const {header, rows} = parseCSV(text);
+  state.header = header; state.rows = rows; state.csvName = name;
+  // index predicted + missed rows
+  state.events = rows.map((r, i) => ({i, r}))
+    .filter(x => x.r.cells[0] === "predicted" || x.r.cells[0] === "missed");
+  state.idx = 0;
+  renderEvents();
+  document.getElementById("downloadBtn").disabled = false;
+  log(`loaded worksheet ${name}: ${state.events.length} rows`);
+  if (state.events.length) jumpTo(0);
+}
+
+// ----------- rendering -----------------------------------------------------
+function renderEvents() {
+  const list = document.getElementById("events"); list.innerHTML = "";
+  state.events.forEach(({i, r}, idx) => {
+    const c = r.cells;
+    const card = document.createElement("div");
+    card.className = "event-card" + (idx === state.idx ? " active" : "");
+    const frame = c[1] || "—";
+    const ev = c[2] || (c[0] === "missed" ? "(missed)" : "—");
+    const verdict = c[4] || "";
+    const vcls = verdict === "ok" ? "v-ok" :
+                 verdict === "wrong_type" ? "v-wrong" :
+                 verdict === "false_positive" ? "v-fp" :
+                 verdict === "missed" ? "v-missed" : "";
+    card.innerHTML = `
+      <span><b>frame ${frame}</b> ${ev} ${c[3] ? "p" + c[3] : ""}</span>
+      <span class="verdict ${vcls}">${verdict || "unset"}</span>`;
+    card.onclick = () => jumpTo(idx);
+    list.appendChild(card);
+  });
+  // cur event banner
+  const cur = state.events[state.idx];
+  if (!cur) {
+    document.getElementById("curEvent").textContent = "no event selected"; return;
+  }
+  const c = cur.r.cells;
+  document.getElementById("curEvent").textContent =
+    `${c[0]} @ frame ${c[1] || "—"}   ${c[2] || ""} ${c[3] ? "player " + c[3] : ""}`;
+  document.getElementById("curMeta").textContent =
+    `verdict: ${c[4] || "unset"}   correct: ${c[5] || ""}   notes: ${c[6] || ""}`;
+}
+
+function jumpTo(idx) {
+  state.idx = idx;
+  const cur = state.events[idx]; if (!cur) return;
+  const frame = parseInt(cur.r.cells[1], 10);
+  if (!isNaN(frame)) seekToFrame(frame);
+  renderEvents();
+}
+
+function seekToFrame(frame) {
+  const fps = parseFloat(document.getElementById("fps").value) || 30;
+  const t = frame / fps;
+  const v = document.getElementById("video");
+  if (v.readyState >= 1) {
+    v.currentTime = Math.max(0, t - 0.5); // start 0.5s before event
+  }
+}
+
+// ----------- verdict mutation ---------------------------------------------
+function setVerdict(v) {
+  const cur = state.events[state.idx]; if (!cur) return;
+  // don't touch 'missed' section verdicts (pre-filled as 'missed')
+  if (cur.r.cells[0] === "missed") return;
+  cur.r.cells[4] = v;
+  renderEvents();
+  if (v) nextEvent();
+}
+function nextEvent() { if (state.idx < state.events.length - 1) { state.idx++; jumpTo(state.idx); } }
+function prevEvent() { if (state.idx > 0) { state.idx--; jumpTo(state.idx); } }
+
+function addMissed() {
+  const fps = parseFloat(document.getElementById("fps").value) || 30;
+  const v = document.getElementById("video");
+  const frame = Math.round(v.currentTime * fps);
+  const evType = document.getElementById("missedType").value;
+  const player = document.getElementById("missedPlayer").value;
+  // find an empty missed row; if none, append
+  let row = state.rows.find(r => r.cells[0] === "missed" && !r.cells[1]);
+  if (!row) {
+    row = {raw: "", cells: ["missed", String(frame), "", player, "missed", evType, ""]};
+    state.rows.push(row);
+  } else {
+    row.cells[1] = String(frame);
+    row.cells[3] = player;
+    row.cells[4] = "missed";
+    row.cells[5] = evType;
+  }
+  // rebuild events index
+  state.events = state.rows.map((r, i) => ({i, r}))
+    .filter(x => x.r.cells[0] === "predicted" || x.r.cells[0] === "missed");
+  renderEvents();
+  log(`added missed ${evType} @ frame ${frame} player ${player}`);
+}
+
+// ----------- download ------------------------------------------------------
+document.getElementById("downloadBtn").addEventListener("click", () => {
+  const text = serializeCSV(state.rows);
+  const blob = new Blob([text], {type: "text/csv"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = state.csvName || "annotated.csv";
+  a.click(); URL.revokeObjectURL(url);
+  log("downloaded " + a.download);
+});
+
+// ----------- keyboard -----------------------------------------------------
+window.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+  const k = e.key.toLowerCase();
+  if (k === "a") setVerdict("ok");
+  else if (k === "w") setVerdict("wrong_type");
+  else if (k === "f") setVerdict("false_positive");
+  else if (k === "s") setVerdict("");
+  else if (k === "m") addMissed();
+  else if (k === "arrowleft") { prevEvent(); e.preventDefault(); }
+  else if (k === "arrowright") { nextEvent(); e.preventDefault(); }
+});
+
+function log(msg) {
+  const el = document.getElementById("log");
+  const ts = new Date().toLocaleTimeString();
+  el.innerHTML = `[${ts}] ${msg}<br>` + el.innerHTML;
+}
+</script>
+</body>
+</html>
