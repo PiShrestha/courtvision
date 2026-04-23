@@ -90,6 +90,9 @@ class RimTracker:
         max_jump_px: int = 30,
         box_scale: float = 2.4,
         flow_max_per_frame_jump_px: int = 25,
+        template_dir: str | None = None,
+        template_min_score: float = 0.42,
+        smooth_window: int = 5,
     ) -> None:
         # flow mode bounds *per-frame* displacement. 25 px/frame is a very
         # fast pan at 30 fps (~750 px/s); anything faster is almost certainly
@@ -109,13 +112,54 @@ class RimTracker:
         self._last_center: tuple[int, int] = anchor.center
         self._last_radius: int = anchor.radius
 
+        # template-match rim detector: lazy-loaded on first use so pipelines
+        # that don't request kind="template" pay zero import cost.
+        self._template_detector = None
+        if tracker_kind == "template" and template_dir:
+            from template_rim_detector import TemplateRimDetector
+            self._template_detector = TemplateRimDetector(
+                template_dir, min_score=template_min_score)
+
+        # median smoothing over the last N frames: removes per-frame jitter
+        # from any tracker kind. window=1 disables.
+        from collections import deque
+        self.smooth_window = max(1, int(smooth_window))
+        self._cx_hist: deque[int] = deque(maxlen=self.smooth_window)
+        self._cy_hist: deque[int] = deque(maxlen=self.smooth_window)
+        self._r_hist:  deque[int] = deque(maxlen=self.smooth_window)
+
     def update(
         self,
         frame: np.ndarray,
         frame_id: int,
         detected_bbox: list[float] | None = None,
     ) -> TrackedHoop:
-        """return the best rim position for this frame.
+        """return the best rim position for this frame, median-smoothed."""
+        raw = self._update_raw(frame, frame_id, detected_bbox)
+        return self._smooth(raw)
+
+    def _smooth(self, hoop: TrackedHoop) -> TrackedHoop:
+        """median-smooth the raw rim position over the last N frames."""
+        if self.smooth_window <= 1:
+            return hoop
+        import statistics as st
+        self._cx_hist.append(int(hoop.center[0]))
+        self._cy_hist.append(int(hoop.center[1]))
+        self._r_hist.append(int(hoop.radius))
+        return TrackedHoop(
+            center=(int(st.median(self._cx_hist)),
+                    int(st.median(self._cy_hist))),
+            radius=int(st.median(self._r_hist)),
+            source=hoop.source,
+        )
+
+    def _update_raw(
+        self,
+        frame: np.ndarray,
+        frame_id: int,
+        detected_bbox: list[float] | None = None,
+    ) -> TrackedHoop:
+        """return the best rim position for this frame (unsmoothed).
 
         precedence:
           1. `detected_bbox` from a per-frame hoop detector (most reliable).
@@ -137,6 +181,14 @@ class RimTracker:
         # flow field stops being a pure translation).
         if self.kind == "flow":
             return self._flow_update(frame, frame_id)
+
+        # template mode: match a gallery of pre-cropped rim images against
+        # the current frame at multiple scales. robust to camera pan/zoom
+        # because the gallery captures the hoop's visual signature, not
+        # a fixed position. falls back to static anchor when no template
+        # scores above threshold.
+        if self.kind == "template":
+            return self._template_update(frame, frame_id)
 
         # (re)seed on the first call and every reseed_every frames.
         if (self._tracker is None
@@ -298,6 +350,33 @@ class RimTracker:
         self._flow_points = pts if pts is not None else None
         self._flow_radius = self.anchor.radius
         self._flow_center = self.anchor.center
+
+    # ---- template-match path -----------------------------------------------
+
+    def _template_update(self, frame: np.ndarray, frame_id: int) -> TrackedHoop:
+        """per-frame rim localisation via multi-scale template matching.
+
+        searches around the last confident match first (cheap window). if
+        that fails, opens the search to the whole frame. on total failure
+        (all templates score below threshold), falls back to the static
+        anchor so downstream event logic always has a rim position.
+        """
+        if self._template_detector is None:
+            return self._static_hoop()
+        # first cheap pass: narrow window around last center.
+        match = self._template_detector.detect(frame,
+                                               search_center=self._last_center,
+                                               search_half=240)
+        if match is None:
+            # broad pass: whole frame, no window.
+            match = self._template_detector.detect(frame, search_center=None)
+        if match is None:
+            return self._static_hoop()
+        cx, cy = match.center
+        r = max(6, int(match.radius))
+        self._last_center = (cx, cy)
+        self._last_radius = r
+        return TrackedHoop(center=(cx, cy), radius=r, source="template")
 
     def _static_hoop(self) -> TrackedHoop:
         self._last_center = self.anchor.center

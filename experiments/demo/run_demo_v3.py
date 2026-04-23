@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -35,8 +36,11 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--tracker", default="botsort.yaml")
     ap.add_argument("--hoop", default=None)
     ap.add_argument("--rim-tracker-kind", default="flow",
-                    choices=["csrt", "kcf", "mil", "flow", "static"])
+                    choices=["csrt", "kcf", "mil", "flow", "static", "template"])
     ap.add_argument("--rim-reseed-every", type=int, default=90)
+    ap.add_argument("--rim-template-dir", default=None,
+                    help="dir of rim_*.png templates for --rim-tracker-kind=template. "
+                         "env var RIM_TEMPLATE_DIR used if flag omitted.")
     ap.add_argument("--upward-trigger", type=float, default=-10.0)
     ap.add_argument("--history-frames", type=int, default=6)
     ap.add_argument("--release-dist-px", type=float, default=60.0)
@@ -131,9 +135,13 @@ def main() -> int:
                       tracker_config=args.tracker, imgsz=args.imgsz)
     duo = DuoTracker()
 
+    # template dir for rim-tracker-kind=template; flag wins over env var.
+    template_dir = args.rim_template_dir or os.environ.get("RIM_TEMPLATE_DIR")
+
     cfg = V3Config(
         tracker_kind=args.rim_tracker_kind,
         reseed_every=args.rim_reseed_every,
+        template_dir=template_dir,
         upward_trigger=args.upward_trigger,
         history_frames=args.history_frames,
         release_dist_px=args.release_dist_px,

@@ -1,0 +1,202 @@
+[
+  {
+    "source": "Screenshot 2026-04-22 at 11.53.03\u202fPM.png",
+    "status": "ok",
+    "tight_bbox": [
+      47,
+      385,
+      288,
+      577
+    ],
+    "padded_bbox": [
+      18,
+      362,
+      317,
+      600
+    ],
+    "crop": "rim_Screenshot 2026-04-22 at 11.53.03\u202fPM.png",
+    "crop_size": [
+      299,
+      238
+    ],
+    "chosen_phrases": {
+      "rim": "basketball hoop"
+    },
+    "n_rim_signals": 6
+  },
+  {
+    "source": "Screenshot 2026-04-22 at 11.53.26\u202fPM.png",
+    "status": "ok",
+    "tight_bbox": [
+      41,
+      405,
+      283,
+      589
+    ],
+    "padded_bbox": [
+      12,
+      383,
+      312,
+      611
+    ],
+    "crop": "rim_Screenshot 2026-04-22 at 11.53.26\u202fPM.png",
+    "crop_size": [
+      300,
+      228
+    ],
+    "chosen_phrases": {
+      "rim": "basketball hoop"
+    },
+    "n_rim_signals": 6
+  },
+  {
+    "source": "Screenshot 2026-04-22 at 11.53.42\u202fPM.png",
+    "status": "ok",
+    "tight_bbox": [
+      48,
+      416,
+      293,
+      610
+    ],
+    "padded_bbox": [
+      19,
+      393,
+      322,
+      633
+    ],
+    "crop": "rim_Screenshot 2026-04-22 at 11.53.42\u202fPM.png",
+    "crop_size": [
+      303,
+      240
+    ],
+    "chosen_phrases": {
+      "rim": "basketball hoop"
+    },
+    "n_rim_signals": 6
+  },
+  {
+    "source": "Screenshot 2026-04-22 at 11.54.17\u202fPM.png",
+    "status": "ok",
+    "tight_bbox": [
+      191,
+      233,
+      321,
+      358
+    ],
+    "padded_bbox": [
+      175,
+      218,
+      337,
+      373
+    ],
+    "crop": "rim_Screenshot 2026-04-22 at 11.54.17\u202fPM.png",
+    "crop_size": [
+      162,
+      155
+    ],
+    "chosen_phrases": {
+      "rim": "basketball hoop"
+    },
+    "n_rim_signals": 6
+  },
+  {
+    "source": "Screenshot 2026-04-22 at 11.55.02\u202fPM.png",
+    "status": "ok",
+    "tight_bbox": [
+      215,
+      254,
+      326,
+      371
+    ],
+    "padded_bbox": [
+      202,
+      240,
+      339,
+      385
+    ],
+    "crop": "rim_Screenshot 2026-04-22 at 11.55.02\u202fPM.png",
+    "crop_size": [
+      137,
+      145
+    ],
+    "chosen_phrases": {
+      "rim": "basketball hoop"
+    },
+    "n_rim_signals": 6
+  },
+  {
+    "source": "Screenshot 2026-04-22 at 11.55.15\u202fPM.png",
+    "status": "ok",
+    "tight_bbox": [
+      300,
+      312,
+      496,
+      518
+    ],
+    "padded_bbox": [
+      276,
+      287,
+      520,
+      543
+    ],
+    "crop": "rim_Screenshot 2026-04-22 at 11.55.15\u202fPM.png",
+    "crop_size": [
+      244,
+      256
+    ],
+    "chosen_phrases": {
+      "rim": "basketball hoop"
+    },
+    "n_rim_signals": 6
+  },
+  {
+    "source": "Screenshot 2026-04-22 at 11.55.34\u202fPM.png",
+    "status": "ok",
+    "tight_bbox": [
+      233,
+      275,
+      373,
+      417
+    ],
+    "padded_bbox": [
+      216,
+      258,
+      390,
+      434
+    ],
+    "crop": "rim_Screenshot 2026-04-22 at 11.55.34\u202fPM.png",
+    "crop_size": [
+      174,
+      176
+    ],
+    "chosen_phrases": {
+      "rim": "basketball hoop"
+    },
+    "n_rim_signals": 6
+  },
+  {
+    "source": "Screenshot 2026-04-22 at 11.56.06\u202fPM.png",
+    "status": "ok",
+    "tight_bbox": [
+      261,
+      308,
+      442,
+      502
+    ],
+    "padded_bbox": [
+      239,
+      285,
+      464,
+      525
+    ],
+    "crop": "rim_Screenshot 2026-04-22 at 11.56.06\u202fPM.png",
+    "crop_size": [
+      225,
+      240
+    ],
+    "chosen_phrases": {
+      "rim": "basketball hoop"
+    },
+    "n_rim_signals": 6
+  }
+]

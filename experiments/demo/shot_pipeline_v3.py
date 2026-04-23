@@ -43,6 +43,9 @@ class V3Config:
     use_yoloe: bool = False
     use_pose: bool = False
     sam3_cache_path: str | None = None
+    # template-match rim anchoring (kind="template"). dir of rim_*.png.
+    template_dir: str | None = None
+    template_min_score: float = 0.42
     # fusion knobs
     min_signal_conf: float = 0.15
     center_agreement_px: float = 40.0
@@ -82,8 +85,12 @@ class ShotPipelineV3:
     ) -> None:
         self.anchor = anchor
         self.config = config or V3Config()
-        self.rim = RimTracker(anchor=anchor, tracker_kind=self.config.tracker_kind,
-                                reseed_every=self.config.reseed_every)
+        self.rim = RimTracker(
+            anchor=anchor, tracker_kind=self.config.tracker_kind,
+            reseed_every=self.config.reseed_every,
+            template_dir=self.config.template_dir,
+            template_min_score=self.config.template_min_score,
+        )
 
         # fps-scaled rule windows (same scaling as v2).
         scale = max(1.0, self.config.fps / 30.0)
