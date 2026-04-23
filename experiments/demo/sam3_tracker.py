@@ -33,7 +33,9 @@ class Sam3Config:
     concepts: dict[str, str | list[str]] = field(
         default_factory=lambda: {k: list(v) for k, v in DEFAULT_CONCEPTS.items()}
     )
-    prompt_frame: int = 0
+    # seed frames to try in order. rim isn't always visible at frame 0 — if the
+    # first frame returns no hits for all phrases, we fall through to later seeds.
+    prompt_frames: list[int] = field(default_factory=lambda: [0, 30, 90, 180])
     min_score: float = 0.2
     device: str = "cuda"
 
@@ -68,24 +70,35 @@ class Sam3Tracker:
         self._ensure_predictor()
         session = self._start_session(video_path, start_s, end_s)
 
-        # prompt each concept with its ordered list of phrases; stop at the
-        # first phrase that returns non-empty object ids.
+        # prompt each concept with its ordered list of phrases across multiple
+        # seed frames; stop at the first (frame, phrase) that returns non-empty
+        # object ids. this recovers clips where rim isn't visible at frame 0.
         concept_to_id: dict[str, list[int]] = {}
         chosen_phrase: dict[str, str] = {}
+        chosen_frame: dict[str, int] = {}
         for canonical, phrases in self.config.concepts.items():
             tries = [phrases] if isinstance(phrases, str) else list(phrases)
             ids: list[int] = []
-            for p in tries:
-                ids = self._add_text_prompt(
-                    session_id=session["session_id"],
-                    frame_index=self.config.prompt_frame,
-                    text=p,
-                )
+            hit_frame: int | None = None
+            hit_phrase: str | None = None
+            for f in self.config.prompt_frames:
+                for p in tries:
+                    ids = self._add_text_prompt(
+                        session_id=session["session_id"],
+                        frame_index=f,
+                        text=p,
+                    )
+                    if ids:
+                        hit_phrase, hit_frame = p, f
+                        break
                 if ids:
-                    chosen_phrase[canonical] = p
                     break
+            if hit_phrase is not None:
+                chosen_phrase[canonical] = hit_phrase
+                chosen_frame[canonical] = hit_frame if hit_frame is not None else 0
             concept_to_id[canonical] = ids
         self._chosen_phrases = chosen_phrase
+        self._chosen_frames = chosen_frame
 
         # propagate forward; one signal per (frame, instance) above threshold.
         signals: list[PerceptionSignal] = []

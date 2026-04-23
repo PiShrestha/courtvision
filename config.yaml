@@ -15,8 +15,10 @@ perception:
   confidence: 0.35
   # inference resolution. 640 default, 1280 improves small-object (ball) recall.
   imgsz: 640
-  # ultralytics tracker config: bytetrack.yaml or botsort.yaml.
-  tracker: bytetrack.yaml
+  # ultralytics tracker config: bytetrack.yaml or botsort.yaml. botsort handles
+  # re-identification better under occlusion (matters in 1v1 where the ball gets
+  # eclipsed by the defender).
+  tracker: botsort.yaml
 
 symbolic:
   # possession threshold in court units (feet), used when homography is configured.
@@ -33,3 +35,12 @@ homography_config: null
 
 # where to write the final stats report.
 out_txt: outputs/stats_report.txt
+
+# optional annotated-video output. leave save_video null to skip.
+annotate:
+  save_video: null      # path to output mp4, e.g. outputs/1v1-mk_annotated.mp4
+  thickness: 2          # box line width in pixels
+  colors:               # bgr tuples
+    player: [0, 0, 255]   # red
+    ball: [0, 255, 0]     # green
+    hoop: [255, 0, 0]     # blue (reserved; needs a custom checkpoint)

@@ -5,7 +5,12 @@ opencv-python>=4.8         # video i/o, frame ops, homography
 numpy>=1.24
 
 # deep-learning backend (cuda wheel auto-picked when a gpu is present)
-torch>=2.0
+# note: torch 2.11+cu130 dropped sm_70 kernels, so V100 GPUs break with
+# "cuda error: no kernel image is available". if targeting a mixed GPU pool
+# (uva hpc bii-gpu / udc-an33-*), force cu128:
+#   pip install --index-url https://download.pytorch.org/whl/cu128 \
+#       --force-reinstall torch==2.9.0 torchvision==0.24.0
+torch>=2.0,<2.11
 torchvision>=0.15
 
 # narrative / scouting summary

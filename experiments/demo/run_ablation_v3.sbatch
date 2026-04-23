@@ -14,7 +14,7 @@
 #SBATCH --job-name=cv_v3_abl
 #SBATCH --output=logs/v3_abl_%A_%a.out
 #SBATCH --error=logs/v3_abl_%A_%a.err
-#SBATCH --time=00:40:00
+#SBATCH --time=01:30:00   # pose variants hit timeout at 40m; bumped with margin
 #SBATCH --mem=20G
 #SBATCH --cpus-per-task=4
 #SBATCH --partition=gpu-a6000

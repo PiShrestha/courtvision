@@ -55,7 +55,11 @@ def _expand(base: list[dict], variants: list[tuple[str, dict]],
 def write_csv(rows: list[dict], out: Path) -> None:
     if not rows:
         raise SystemExit(f"no rows to write for {out}")
-    cols = list(rows[0].keys())
+    # sbatch scripts parse positionally via `IFS=, read -r _TASKID VARIANT RUN_ID ...`,
+    # so task_id + variant must lead the header regardless of dict insertion order.
+    all_cols = list(rows[0].keys())
+    lead = [c for c in ("task_id", "variant") if c in all_cols]
+    cols = lead + [c for c in all_cols if c not in lead]
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=cols, lineterminator="\n")

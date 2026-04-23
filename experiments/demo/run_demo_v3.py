@@ -29,10 +29,10 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--video", required=True)
     ap.add_argument("--start", type=float, default=0.0)
     ap.add_argument("--end", type=float, default=None)
-    ap.add_argument("--model", default="yolov8l.pt")
+    ap.add_argument("--model", default="yolo26l.pt")
     ap.add_argument("--imgsz", type=int, default=640)
     ap.add_argument("--confidence", type=float, default=0.30)
-    ap.add_argument("--tracker", default="bytetrack.yaml")
+    ap.add_argument("--tracker", default="botsort.yaml")
     ap.add_argument("--hoop", default=None)
     ap.add_argument("--rim-tracker-kind", default="flow",
                     choices=["csrt", "kcf", "mil", "flow", "static"])

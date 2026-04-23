@@ -7,7 +7,7 @@
 #SBATCH --job-name=cv_v4_ens
 #SBATCH --output=logs/v4_ens_%A_%a.out
 #SBATCH --error=logs/v4_ens_%A_%a.err
-#SBATCH --time=00:45:00
+#SBATCH --time=01:30:00   # full_strict/yoloe_pose/pose_sam3_1 need pose headroom
 #SBATCH --mem=20G
 #SBATCH --cpus-per-task=4
 #SBATCH --partition=gpu-a6000
